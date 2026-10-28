@@ -41,20 +41,20 @@ def summarize_with_groq(title, text):
             messages=[
                 {
                     "role": "system",
-                    "content": "أنت محرر أخبار محترف على تيك توك. مهمتك هي قراءة النص وتلخيصه في فقرة أو فقرتين قصيرتين ومشوقتين. تحذير هام جداً: يُمنع منعاً باتاً ذكر اسم أي موقع أو مصدر إخباري (مثل اليوم السابع، الجزيرة، روسيا اليوم، إلخ). لا تكتب أي مقدمات. بعد الملخص، أضف 10 هاشتاجات قوية ومناسبة للخبر في سطر منفصل."
+                    "content": "أنت محرر أخبار محترف على تيك توك. مهمتك هي قراءة النص وتلخيصه في مقال صغير لا يتجاوز 300 حرف. يُمنع منعاً باتاً ذكر اسم أي موقع أو مصدر إخباري (مثل اليوم السابع، المصري اليوم، الجزيرة، إلخ). لا تكتب أي مقدمات أو خواتيم. بعد الملخص، أضف 5 إلى 10 هاشتاجات قوية ومناسبة للخبر في سطر منفصل."
                 },
                 {
                     "role": "user",
-                    "content": f"العنوان: {title}\n\nالنص: {text}"
+                    "content": f"النص الكامل للخبر:\n{text}"
                 }
             ],
-            model="llama3-8b-8192",
-            temperature=0.6,
-            max_tokens=1024,
+            model="llama3-70b-8192", # موديل أقوى وأذكى في اللغة العربية
+            temperature=0.7,
+            max_tokens=500,
         )
         return chat_completion.choices[0].message.content
     except Exception as e:
-        print(f"Groq Error: {e}")
+        print(f"❌ Groq Error: {e}")
         return None
 
 def get_news_data():
@@ -123,7 +123,6 @@ def create_video_from_image(image_url, output_path="output_video.mp4"):
     img = img.resize((1080, 1920))
 
     print("Creating 5-second video...")
-    # تحويل الصورة لـ numpy array وإنشاء الفيديو بدون أي نصوص
     clip = ImageClip(np.array(img)).set_duration(5)
     clip.write_videofile(output_path, fps=24, codec='libx264', audio=False)
     return output_path
@@ -137,8 +136,8 @@ def upload_to_tiktok(access_token, video_path, caption):
     video_size = os.path.getsize(video_path)
     payload = {
         "post_info": {
-            "title": caption[:2200], # تيك توك بيقبل وصف لحد 2200 حرف
-            "privacy_level": "SELF_ONLY", # في وضع التجربة
+            "title": caption[:2200], 
+            "privacy_level": "SELF_ONLY", 
             "disable_duet": False,
             "disable_comment": False,
             "disable_stitch": False
