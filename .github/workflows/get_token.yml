@@ -1,0 +1,15 @@
+name: Get TikTok Refresh Token
+on: workflow_dispatch
+jobs:
+  exchange-code:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Exchange Code
+        run: |
+          curl -X POST 'https://open.tiktokapis.com/v2/oauth/token/' \
+          -H 'Content-Type: application/x-www-form-urlencoded' \
+          -d 'client_key=${{ secrets.TIKTOK_CLIENT_KEY }}' \
+          -d 'client_secret=${{ secrets.TIKTOK_CLIENT_SECRET }}' \
+          -d 'code=ddgWjPvsenkbLCOgL-fNPWIfPz7Ttlf__X2vt9ppKfekNPbtuQv-20mznG9WEViEmt7wEOSc4fFCiv6Xgu3w2JiiOJNkZ89FaZwGaamX5LNEjBu1WLS5hpwSuWnl7UrNX0XQQLaCBPTAJknJ_jy8xNQg3mfQ0W36K2pEfT7BHTWvWes6yrNcRIObKXhQM7CsZh62PFaWupqxb9Sx_TS7fN24vUWtZdBKbFp6qU2toxLioBcjh5cl32VAW2OXMS_Bq9CfaRLIXA4gDM04*!4896.e1' \
+          -d 'grant_type=authorization_code' \
+          -d 'redirect_uri=https://mostafaalgo7ary.github.io/lakum24-legal/callback.html'
