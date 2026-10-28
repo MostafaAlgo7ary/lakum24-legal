@@ -1,7 +1,7 @@
 requests
 feedparser
 beautifulsoup4
-moviepy
+moviepy==1.0.3
 Pillow
 arabic-reshaper
 python-bidi
