@@ -6,9 +6,12 @@ on:
   workflow_dispatch:
     inputs:
       news_url:
-        description: 'رابط الخبر (اختياري - لو سيبته فاضي هيجيب من sources.txt)'
+        description: 'رابط الخبر (اختياري)'
         required: false
         default: ''
+
+permissions:
+  contents: write
 
 jobs:
   run-bot:
@@ -34,7 +37,6 @@ jobs:
           NEWS_URL: ${{ github.event.inputs.news_url }}
         run: python bot.py
 
-      # الخطوة دي بتعمل Commit لملف posted_history.txt بعد ما البوت ينشر
       - name: Commit and push history
         run: |
           git config --local user.email "action@github.com"
