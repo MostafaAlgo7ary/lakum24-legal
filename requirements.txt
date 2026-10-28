@@ -3,3 +3,5 @@ feedparser
 beautifulsoup4
 moviepy
 Pillow
+arabic-reshaper
+python-bidi
