@@ -1,1 +1,3 @@
-https://www.youm7.com/
+https://news.google.com/rss/search?q=أخبار+مصر&hl=ar&gl=EG&ceid=EG:ar
+https://www.youm7.com/rss/SectionRss?SectionID=97
+https://www.aljazeera.net/aljazeerarss/a7c186be-1baa-4bd4-9d80-a84db769f779/73d0e1b4-532f-45ef-b135-bfdff8b8cab9
