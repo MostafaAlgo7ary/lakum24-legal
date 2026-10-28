@@ -34,22 +34,22 @@ def get_access_token():
         print(f"❌ Token Error: {response.text}")
         return None
 
-def summarize_with_groq(text):
+def summarize_with_groq(title, text):
     print("Generating summary and hashtags with Groq...")
     try:
         chat_completion = groq_client.chat.completions.create(
             messages=[
                 {
                     "role": "system",
-                    "content": "أنت محرر أخبار محترف على تيك توك. قم بتلخيص الخبر التالي في شكل نقاط موجزة وجذابة (لا تتجاوز 3 فقرات قصيرة). أضف في النهاية 4 هاشتاجات قوية ومناسبة. لا تكتب أي مقدمات أو خواتيم، فقط الملخص والهاشتاجات."
+                    "content": "أنت محرر أخبار محترف على تيك توك. مهمتك هي قراءة النص وتلخيصه في فقرة أو فقرتين قصيرتين ومشوقتين. تحذير هام جداً: يُمنع منعاً باتاً ذكر اسم أي موقع أو مصدر إخباري (مثل اليوم السابع، الجزيرة، روسيا اليوم، إلخ). لا تكتب أي مقدمات. بعد الملخص، أضف 10 هاشتاجات قوية ومناسبة للخبر في سطر منفصل."
                 },
                 {
                     "role": "user",
-                    "content": text
+                    "content": f"العنوان: {title}\n\nالنص: {text}"
                 }
             ],
             model="llama3-8b-8192",
-            temperature=0.5,
+            temperature=0.6,
             max_tokens=1024,
         )
         return chat_completion.choices[0].message.content
@@ -187,11 +187,11 @@ if __name__ == "__main__":
                 print(f"Original Title: {news['title']}")
                 
                 # استخدام Groq للتلخيص
-                final_caption = summarize_with_groq(news['text'])
+                final_caption = summarize_with_groq(news['title'], news['text'])
                 
                 # لو Groq فشل لأي سبب، نستخدم العنوان الأصلي كخطة بديلة
                 if not final_caption:
-                    print("Using fallback caption (Original Title).")
+                    print("⚠️ Groq failed. Using fallback caption (Original Title).")
                     final_caption = news['title']
                 
                 print(f"Final Caption: \n{final_caption}")
