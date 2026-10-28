@@ -3,7 +3,12 @@ name: TikTok News Bot
 on:
   schedule:
     - cron: '0 */6 * * *' # يشتغل كل 6 ساعات
-  workflow_dispatch: # يسمح لك بتشغيله يدوياً للتجربة
+  workflow_dispatch:
+    inputs:
+      news_url:
+        description: 'رابط الخبر (اختياري - لو سيبته فاضي هيجيب خبر عشوائي)'
+        required: false
+        default: ''
 
 jobs:
   run-bot:
@@ -17,11 +22,18 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install dependencies
+      - name: Install System Dependencies (Fonts)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto fonts-noto-color-emoji
+
+      - name: Install Python dependencies
         run: pip install -r requirements.txt
 
       - name: Run Bot Script
         env:
           TIKTOK_CLIENT_KEY: ${{ secrets.TIKTOK_CLIENT_KEY }}
           TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
+          TIKTOK_REFRESH_TOKEN: ${{ secrets.TIKTOK_REFRESH_TOKEN }}
+          NEWS_URL: ${{ github.event.inputs.news_url }}
         run: python bot.py
