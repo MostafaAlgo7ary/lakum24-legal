@@ -1,2 +1,5 @@
 requests
 feedparser
+beautifulsoup4
+moviepy
+Pillow
