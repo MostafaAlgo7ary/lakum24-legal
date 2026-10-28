@@ -38,7 +38,6 @@ def get_access_token():
 def summarize_with_groq(title, text):
     print("Generating rewritten article with Groq...")
     
-    # ناخد أول 4000 حرف عشان نضمن إننا مش بنتعدى حدود الموديل
     truncated_text = text[:4000].strip()
     if not truncated_text:
         truncated_text = title
@@ -57,7 +56,7 @@ def summarize_with_groq(title, text):
                 messages=[
                     {
                         "role": "system",
-                        "content": "أنت صانع محتوى محترف على تيك توك. مهمتك هي إعادة صياغة الخبر التالي بالكامل. يجب أن يحتوي النص الجديد على **كل المعلومات والتفاصيل الهامة الموجودة في الخبر الأصلي**، ولكن **بأسلوبك الخاص جداً** (لا تنسخ النص حرفياً). استخدم تنسيقاً جذاباً (مثل النقاط، الإيموجي، أو الأرقام) لجعله سهل القراءة. يُمنع منعاً باتاً ذكر اسم أي موقع أو مصدر إخباري (مثل اليوم السابع، المصري اليوم، الجزيرة). لا تكتب أي مقدمات أو خواتيم، ابدأ بالنص مباشرة. في النهاية، أضف 10 هاشتاجات قوية ومناسبة للخبر في سطر منفصل."
+                        "content": "أنت صانع محتوى محترف على تيك توك. مهمتك هي إعادة صياغة الخبر التالي بالكامل. يجب أن يحتوي النص الجديد على كل المعلومات والتفاصيل الهامة الموجودة في الخبر الأصلي، ولكن بأسلوبك الخاص جداً. استخدم تنسيقاً جذاباً (مثل النقاط أو الإيموجي). تحذير هام جداً: يُمنع منعاً باتاً استخدام أي رموز تنسيق مثل النجمة (**) أو الهاشتاج (##) أو الشرطة السفلية (_)، اكتب نصاً عادياً فقط. يُمنع منعاً باتاً ذكر اسم أي موقع أو مصدر إخباري. لا تكتب أي مقدمات. في النهاية، أضف 10 هاشتاجات قوية ومناسبة للخبر في سطر منفصل."
                     },
                     {
                         "role": "user",
@@ -66,13 +65,19 @@ def summarize_with_groq(title, text):
                 ],
                 model=model_name,
                 temperature=0.7,
-                max_tokens=1500, # زيادة عدد التوكنز عشان يقدر يكتب خبر طويل
+                max_tokens=1500,
             )
             result = chat_completion.choices[0].message.content
+            
+            # تنظيف النص من أي نجوم أو رموز تنسيق تسربت
+            cleaned_result = re.sub(r'\*+', '', result) # مسح النجوم
+            cleaned_result = cleaned_result.replace('##', '') # مسح الهاشتاجات الزيادة
+            cleaned_result = cleaned_result.replace('_', '') # مسح الشرطة السفلية
+            
             print(f"✅ Success with {model_name}!")
-            return result
+            return cleaned_result.strip()
+            
         except Exception as e:
-            # طباعة الخطأ الحقيقي عشان لو فشل نعرف السبب
             print(f"❌ Model {model_name} failed: {e}")
             continue
 
@@ -166,7 +171,7 @@ def upload_to_tiktok(access_token, video_path, caption):
     video_size = os.path.getsize(video_path)
     payload = {
         "post_info": {
-            "title": caption[:2200], # تيك توك بيقبل وصف لحد 2200 حرف
+            "title": caption[:2200], 
             "privacy_level": "SELF_ONLY", 
             "disable_duet": False,
             "disable_comment": False,
@@ -217,7 +222,6 @@ if __name__ == "__main__":
                 
                 final_caption = summarize_with_groq(news['title'], news['text'])
                 
-                # لو الذكاء الاصطناعي فشل تماماً، نستخدم النص الأصلي (بدون العنوان) كخطة بديلة
                 if not final_caption:
                     print("⚠️ Groq failed. Using original text (cleaned) as fallback.")
                     clean_text = re.sub(r'\|.*', '', news['text']).strip()
