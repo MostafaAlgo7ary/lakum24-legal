@@ -9,10 +9,14 @@ jobs:
         with:
           python-version: '3.10'
           
+      - name: Install dependencies
+        run: pip install requests
+
       - name: Exchange Code via Python
         env:
           CLIENT_KEY: ${{ secrets.TIKTOK_CLIENT_KEY }}
           CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
+          AUTH_CODE: 'qBlnKs9niRIr9Dz-Zls3VjCG98ggg6D8IBwlifTfA3dOm0s4a9477ImiqacNdiAXsoWOJhcRTSRRyYAG4S0aBROeu9M59gDnTMo5bkpuft1GwwTeOn5qnRhaQYxsl7vevcj_DA4rE-t-t-QXhy3srSf0hllleFjwXEW8EWzdSbWOTINjKpSIveR1uOOhbvUvHy2239JGq1AtQO3fTwvjn5ETAtrDdki6vx--_xoKjd1qxeM-dnWoJaJpQJS0jomHulIt4nvfxy-vnopS*!4940.e1'
         run: |
           python -c "
           import requests, os
@@ -20,7 +24,7 @@ jobs:
           payload = {
               'client_key': os.environ['CLIENT_KEY'],
               'client_secret': os.environ['CLIENT_SECRET'],
-              'code': 'E50DNRxwYEpGFRcj9NpZ5MQ1JHdMn72OsBukk50lDoqyRHenrmP2qRPK4zpBgdcessruz2Zb884BcyTqfP2q_VP9l-cHPUGIsBy37Cxh4wTN8IsRUc2vezUirdt1TuJ1LaBYTB4lrSqy3kxbAaP3E2SqHInMrq9K7ArdIhHgRIaexhJiqsjHnnymrawrcFAR8jPGMjefBNiwsONeytvz-BH8KQrBfoGcoB4up8jfM0JNrB7oQ4QMQqts9zZfRH3MIDRVT0AD-7TOtgvQ*!4884.e1',
+              'code': os.environ['AUTH_CODE'],
               'grant_type': 'authorization_code',
               'redirect_uri': 'https://mostafaalgo7ary.github.io/lakum24-legal/callback.html'
           }
