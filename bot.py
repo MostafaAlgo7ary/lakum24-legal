@@ -36,20 +36,18 @@ def get_access_token():
         return None
 
 def summarize_with_groq(title, text):
-    print("Generating summary and hashtags with Groq...")
+    print("Generating rewritten article with Groq...")
     
-    # تنظيف النص وتحديد طوله عشان ميعملش مشكلة
-    clean_text = text[:3000].strip()
-    if not clean_text:
-        clean_text = title
+    # ناخد أول 4000 حرف عشان نضمن إننا مش بنتعدى حدود الموديل
+    truncated_text = text[:4000].strip()
+    if not truncated_text:
+        truncated_text = title
 
-    # قائمة الموديلات الحديثة والمستقرة (لو واحد فشل بنجرب اللي بعده)
     models_to_try = [
+        "llama-3.3-70b-versatile",
         "openai/gpt-oss-120b",
         "qwen/qwen3-32b",
-        "meta-llama/llama-4-maverick-17b-128e-instruct",
-        "deepseek-r1-distill-llama-70b",
-        "gemma2-9b-it"
+        "meta-llama/llama-4-maverick-17b-128e-instruct"
     ]
 
     for model_name in models_to_try:
@@ -59,25 +57,25 @@ def summarize_with_groq(title, text):
                 messages=[
                     {
                         "role": "system",
-                        "content": "أنت محرر أخبار محترف على تيك توك. مهمتك هي قراءة النص وتلخيصه في مقال صغير لا يتجاوز 300 حرف. يُمنع منعاً باتاً ذكر اسم أي موقع أو مصدر إخباري (مثل اليوم السابع، المصري اليوم، الجزيرة، إلخ). لا تكتب أي مقدمات. بعد الملخص، أضف 5 إلى 10 هاشتاجات قوية ومناسبة للخبر في سطر منفصل."
+                        "content": "أنت صانع محتوى محترف على تيك توك. مهمتك هي إعادة صياغة الخبر التالي بالكامل. يجب أن يحتوي النص الجديد على **كل المعلومات والتفاصيل الهامة الموجودة في الخبر الأصلي**، ولكن **بأسلوبك الخاص جداً** (لا تنسخ النص حرفياً). استخدم تنسيقاً جذاباً (مثل النقاط، الإيموجي، أو الأرقام) لجعله سهل القراءة. يُمنع منعاً باتاً ذكر اسم أي موقع أو مصدر إخباري (مثل اليوم السابع، المصري اليوم، الجزيرة). لا تكتب أي مقدمات أو خواتيم، ابدأ بالنص مباشرة. في النهاية، أضف 10 هاشتاجات قوية ومناسبة للخبر في سطر منفصل."
                     },
                     {
                         "role": "user",
-                        "content": f"العنوان: {title}\n\nالنص: {clean_text}"
+                        "content": f"العنوان: {title}\n\nالنص: {truncated_text}"
                     }
                 ],
                 model=model_name,
-                temperature=0.6,
-                max_tokens=500,
+                temperature=0.7,
+                max_tokens=1500, # زيادة عدد التوكنز عشان يقدر يكتب خبر طويل
             )
             result = chat_completion.choices[0].message.content
             print(f"✅ Success with {model_name}!")
             return result
         except Exception as e:
+            # طباعة الخطأ الحقيقي عشان لو فشل نعرف السبب
             print(f"❌ Model {model_name} failed: {e}")
-            continue # جرب الموديل اللي بعده
+            continue
 
-    # لو كل الموديلات فشلت، نرجع None عشان نستخدم الخطة البديلة
     print("⚠️ All Groq models failed.")
     return None
 
@@ -93,29 +91,23 @@ def get_news_data():
             resp = requests.get(NEWS_URL, headers=headers, timeout=15)
             soup = BeautifulSoup(resp.text, 'html.parser')
 
-            # 1. استخراج الصورة
             og_image = soup.find('meta', property='og:image')
             if og_image and og_image.get('content'):
                 image_url = og_image['content']
             
-            # 2. استخراج العنوان
             og_title = soup.find('meta', property='og:title')
             if og_title and og_title.get('content'):
                 title = og_title['content']
             elif soup.title:
                 title = soup.title.string
 
-            # 3. تنظيف الصفحة من العناصر غير المرغوبة (قوائم، إعلانات، أكواد)[reference:2]
             for tag in soup(["script", "style", "nav", "header", "footer", "aside", "form", "noscript"]):
                 tag.decompose()
 
-            # 4. محاولة إيجاد حاوية الخبر الرئيسية (article أو main)
             article_body = soup.find('article') or soup.find('main') or soup.find('body')
             
-            # 5. استخراج النص من الفقرات فقط
             if article_body:
                 paragraphs = article_body.find_all('p')
-                # فلترة الفقرات اللي فيها كلام مفيد (أكتر من 20 حرف)
                 article_text = " ".join([p.get_text().strip() for p in paragraphs if len(p.get_text().strip()) > 20])
             else:
                 article_text = ""
@@ -123,7 +115,6 @@ def get_news_data():
             if article_text:
                 text_content = article_text
             else:
-                # خطة بديلة لو مفيش فقرات، ناخد نص الصفحة كله
                 text_content = soup.get_text(separator=' ', strip=True)
 
         except Exception as e:
@@ -159,7 +150,6 @@ def create_video_from_image(image_url, output_path="output_video.mp4"):
     img_resp = requests.get(image_url, timeout=15)
     img = Image.open(io.BytesIO(img_resp.content)).convert("RGB")
     
-    # مقاس 9:16 لتيك توك
     img = img.resize((1080, 1920))
 
     print("Creating 5-second video...")
@@ -176,7 +166,7 @@ def upload_to_tiktok(access_token, video_path, caption):
     video_size = os.path.getsize(video_path)
     payload = {
         "post_info": {
-            "title": caption[:2200], 
+            "title": caption[:2200], # تيك توك بيقبل وصف لحد 2200 حرف
             "privacy_level": "SELF_ONLY", 
             "disable_duet": False,
             "disable_comment": False,
@@ -225,15 +215,13 @@ if __name__ == "__main__":
             if news and news.get('title'):
                 print(f"Original Title: {news['title']}")
                 
-                # استخدام Groq مع تجربة كل الموديلات
                 final_caption = summarize_with_groq(news['title'], news['text'])
                 
-                # لو كل الموديلات فشلت، هنستخدم العنوان الأصلي بس هنشيل منه اسم الموقع
+                # لو الذكاء الاصطناعي فشل تماماً، نستخدم النص الأصلي (بدون العنوان) كخطة بديلة
                 if not final_caption:
-                    print("⚠️ All Groq models failed. Cleaning up original title for fallback.")
-                    # يمسح أي حاجة بعد علامة | (اللي فيها اسم الموقع)
-                    clean_title = re.sub(r'\|.*', '', news['title']).strip()
-                    final_caption = f"{clean_title}\n\n#أخبار #تيك_توك"
+                    print("⚠️ Groq failed. Using original text (cleaned) as fallback.")
+                    clean_text = re.sub(r'\|.*', '', news['text']).strip()
+                    final_caption = f"{clean_text[:800]}...\n\n#أخبار #تيك_توك"
                 else:
                     print("✅ Groq succeeded!")
 
