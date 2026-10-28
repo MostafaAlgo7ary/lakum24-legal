@@ -75,6 +75,28 @@ def summarize_with_groq(title, text):
             continue
     return None
 
+def extract_news_links_from_html(url):
+    """استخراج روابط الأخبار من صفحات HTML (مثل اليوم السابع)"""
+    print(f"Scraping links from HTML page: {url}")
+    links = []
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        resp = requests.get(url, headers=headers, timeout=15)
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        
+        # البحث عن جميع الروابط التي تحتوي على /story/ (وهو نمط روابط الأخبار في اليوم السابع)
+        for a_tag in soup.find_all('a', href=True):
+            href = a_tag['href']
+            if '/story/' in href:
+                # تأكد من أن الرابط كامل
+                if href.startswith('http'):
+                    links.append(href)
+                elif href.startswith('/'):
+                    links.append(f"https://www.youm7.com{href}")
+    except Exception as e:
+        print(f"Error extracting links from {url}: {e}")
+    return links
+
 def get_news_from_sources():
     print("Reading sources from sources.txt...")
     if not os.path.exists('sources.txt'):
@@ -82,10 +104,10 @@ def get_news_from_sources():
         return None
 
     with open('sources.txt', 'r', encoding='utf-8') as f:
-        sources = [line.strip() for line in f if line.strip()]
+        sources = [line.strip() for line in f if line.strip().startswith('http')]
 
     if not sources:
-        print("❌ sources.txt is empty!")
+        print("❌ No valid links found in sources.txt!")
         return None
 
     # قراءة سجل الأخبار المنشورة
@@ -94,42 +116,58 @@ def get_news_from_sources():
         with open('posted_history.txt', 'r', encoding='utf-8') as f:
             posted_urls = set(line.strip() for line in f)
 
-    # نخلط المصادر عشان نختار واحد عشوائي
     random.shuffle(sources)
+    all_article_links = []
 
     for source_url in sources:
-        print(f"Checking source: {source_url}")
-        try:
-            feed = feedparser.parse(source_url)
-            if not feed.entries:
-                continue
-            
-            # بندور على أول خبر مش متكرر
-            for entry in feed.entries:
-                article_url = entry.link
-                if article_url not in posted_urls:
-                    print(f"✅ Found new article: {entry.title}")
-                    return {
-                        "title": entry.title,
-                        "url": article_url,
-                        "rss_summary": entry.summary if hasattr(entry, 'summary') else entry.title
-                    }
-        except Exception as e:
-            print(f"Error reading source {source_url}: {e}")
-            continue
+        if 'almasryalyoum.com/rss' in source_url:
+            # التعامل مع روابط RSS (المصري اليوم)
+            print(f"Checking RSS source: {source_url}")
+            try:
+                feed = feedparser.parse(source_url)
+                for entry in feed.entries:
+                    all_article_links.append(entry.link)
+            except Exception as e:
+                print(f"Error reading RSS {source_url}: {e}")
+        elif 'youm7.com/Section' in source_url:
+            # التعامل مع صفحات الويب (اليوم السابع)
+            links = extract_news_links_from_html(source_url)
+            all_article_links.extend(links)
+
+    if not all_article_links:
+        print("⚠️ No article links found from any source.")
+        return None
+
+    # إزالة التكرار من روابط الأخبار
+    all_article_links = list(set(all_article_links))
+    random.shuffle(all_article_links)
+
+    # اختيار أول خبر مش متسجل
+    for article_url in all_article_links:
+        if article_url not in posted_urls:
+            print(f"✅ Found new article: {article_url}")
+            return {"url": article_url}
             
     print("⚠️ No new news found in any source.")
     return None
 
-def scrape_full_article(article_url, fallback_text):
+def scrape_full_article(article_url, fallback_text=""):
     print(f"Scraping full article from: {article_url}")
     image_url = None
     text_content = ""
+    title = ""
     
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
         resp = requests.get(article_url, headers=headers, timeout=15)
         soup = BeautifulSoup(resp.text, 'html.parser')
+
+        # استخراج العنوان
+        og_title = soup.find('meta', property='og:title')
+        if og_title and og_title.get('content'):
+            title = og_title['content']
+        elif soup.title:
+            title = soup.title.string
 
         og_image = soup.find('meta', property='og:image')
         if og_image and og_image.get('content'):
@@ -158,7 +196,7 @@ def scrape_full_article(article_url, fallback_text):
     if not image_url:
         image_url = "https://picsum.photos/1080/1920"
         
-    return text_content, image_url
+    return title, text_content, image_url
 
 def create_video_from_image(image_url, output_path="output_video.mp4"):
     print("Downloading image...")
@@ -236,19 +274,16 @@ if __name__ == "__main__":
             text_to_summarize = ""
             image_url = ""
 
-            # لو اليوزر حط رابط يدوي في الـ Actions
             if NEWS_URL:
                 print("Using manual URL provided by user.")
-                title = NEWS_URL
-                text_to_summarize, image_url = scrape_full_article(NEWS_URL, "خبر جديد")
+                title, text_to_summarize, image_url = scrape_full_article(NEWS_URL, "خبر جديد")
                 article_url_to_save = NEWS_URL
             else:
                 print("Auto-fetching from sources.txt...")
                 news_data = get_news_from_sources()
                 if news_data:
-                    title = news_data['title']
-                    text_to_summarize, image_url = scrape_full_article(news_data['url'], news_data['rss_summary'])
                     article_url_to_save = news_data['url']
+                    title, text_to_summarize, image_url = scrape_full_article(article_url_to_save, "")
             
             if article_url_to_save and text_to_summarize:
                 print(f"Title: {title}")
@@ -263,7 +298,6 @@ if __name__ == "__main__":
                 
                 video_file = create_video_from_image(image_url)
                 
-                # لو الرفع نجح، بنسجل الرابط في السجل عشان ميتكررش
                 if upload_to_tiktok(token, video_file, final_caption):
                     save_to_history(article_url_to_save)
             else:
