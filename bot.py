@@ -3,17 +3,20 @@ import requests
 import feedparser
 from bs4 import BeautifulSoup
 from moviepy.editor import ImageClip
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 import io
-import numpy as np  # <--- السطر الجديد ده
-import arabic_reshaper
-from bidi.algorithm import get_display
+import numpy as np
+from groq import Groq
 
 # --- الإعدادات ---
 CLIENT_KEY = os.environ.get('TIKTOK_CLIENT_KEY')
 CLIENT_SECRET = os.environ.get('TIKTOK_CLIENT_SECRET')
 REFRESH_TOKEN = os.environ.get('TIKTOK_REFRESH_TOKEN')
+GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
 NEWS_URL = os.environ.get('NEWS_URL', '').strip()
+
+# تهيئة عميل Groq
+groq_client = Groq(api_key=GROQ_API_KEY)
 
 def get_access_token():
     url = "https://open.tiktokapis.com/v2/oauth/token/"
@@ -28,14 +31,31 @@ def get_access_token():
     if response.status_code == 200:
         return response.json().get('access_token')
     else:
-        print(f"❌ Token Error Status: {response.status_code}")
-        print(f"❌ Token Error Details: {response.text}")
+        print(f"❌ Token Error: {response.text}")
         return None
 
-def fix_arabic(text):
-    reshaped_text = arabic_reshaper.reshape(text)
-    bidi_text = get_display(reshaped_text)
-    return bidi_text
+def summarize_with_groq(text):
+    print("Generating summary and hashtags with Groq...")
+    try:
+        chat_completion = groq_client.chat.completions.create(
+            messages=[
+                {
+                    "role": "system",
+                    "content": "أنت محرر أخبار محترف على تيك توك. قم بتلخيص الخبر التالي في شكل نقاط موجزة وجذابة (لا تتجاوز 3 فقرات قصيرة). أضف في النهاية 4 هاشتاجات قوية ومناسبة. لا تكتب أي مقدمات أو خواتيم، فقط الملخص والهاشتاجات."
+                },
+                {
+                    "role": "user",
+                    "content": text
+                }
+            ],
+            model="llama3-8b-8192",
+            temperature=0.5,
+            max_tokens=1024,
+        )
+        return chat_completion.choices[0].message.content
+    except Exception as e:
+        print(f"Groq Error: {e}")
+        return None
 
 def get_news_data():
     title = ""
@@ -64,7 +84,7 @@ def get_news_data():
             if article_text:
                 text_content = article_text
             else:
-                text_content = "لم يتم العثور على نص كافٍ في هذا الرابط."
+                text_content = title
 
         except Exception as e:
             print("Error scraping URL:", e)
@@ -94,80 +114,21 @@ def get_news_data():
 
     return {"title": title, "text": text_content, "image_url": image_url}
 
-def create_video_from_image(title, text, image_url, output_path="output_video.mp4"):
+def create_video_from_image(image_url, output_path="output_video.mp4"):
     print("Downloading image...")
     img_resp = requests.get(image_url, timeout=15)
     img = Image.open(io.BytesIO(img_resp.content)).convert("RGB")
     
+    # مقاس 9:16 لتيك توك
     img = img.resize((1080, 1920))
-    overlay = Image.new('RGBA', img.size, (0, 0, 0, 180))
-    img = Image.alpha_composite(img.convert('RGBA'), overlay).convert('RGB')
-
-    draw = ImageDraw.Draw(img)
-    font_path = "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf"
-    
-    fixed_title = fix_arabic(title)
-    fixed_text = fix_arabic(text)
-
-    def wrap_text(text, font, max_width, draw):
-        lines = []
-        words = text.split()
-        current_line = ""
-        for word in words:
-            test_line = current_line + word + " "
-            bbox = draw.textbbox((0, 0), test_line, font=font)
-            width = bbox[2] - bbox[0]
-            if width <= max_width:
-                current_line = test_line
-            else:
-                lines.append(current_line.strip())
-                current_line = word + " "
-        if current_line:
-            lines.append(current_line.strip())
-        return lines
-
-    try:
-        title_font = ImageFont.truetype(font_path, 65)
-    except:
-        title_font = ImageFont.load_default()
-        
-    y_text = 150
-    title_lines = wrap_text(fixed_title, title_font, 950, draw)
-    for line in title_lines:
-        draw.text((60, y_text), line, font=title_font, fill="yellow")
-        y_text += 80
-
-    y_text += 50
-    
-    available_height = 1800 - y_text
-    font_size = 55
-    while True:
-        try:
-            text_font = ImageFont.truetype(font_path, font_size)
-        except:
-            text_font = ImageFont.load_default()
-            
-        text_lines = wrap_text(fixed_text, text_font, 950, draw)
-        total_text_height = len(text_lines) * (font_size + 10)
-        
-        if total_text_height <= available_height or font_size <= 20:
-            break
-        font_size -= 2
-
-    print(f"Using font size {font_size} for text length {len(text)}")
-    
-    for line in text_lines:
-        draw.text((60, y_text), line, font=text_font, fill="white")
-        y_text += (font_size + 10)
 
     print("Creating 5-second video...")
-    
-    # التعديل هنا: تحويل الصورة لـ numpy array
+    # تحويل الصورة لـ numpy array وإنشاء الفيديو بدون أي نصوص
     clip = ImageClip(np.array(img)).set_duration(5)
     clip.write_videofile(output_path, fps=24, codec='libx264', audio=False)
     return output_path
 
-def upload_to_tiktok(access_token, video_path, title):
+def upload_to_tiktok(access_token, video_path, caption):
     init_url = "https://open.tiktokapis.com/v2/post/publish/video/init/"
     headers = {
         "Authorization": f"Bearer {access_token}",
@@ -176,8 +137,8 @@ def upload_to_tiktok(access_token, video_path, title):
     video_size = os.path.getsize(video_path)
     payload = {
         "post_info": {
-            "title": title[:150],
-            "privacy_level": "SELF_ONLY",
+            "title": caption[:2200], # تيك توك بيقبل وصف لحد 2200 حرف
+            "privacy_level": "SELF_ONLY", # في وضع التجربة
             "disable_duet": False,
             "disable_comment": False,
             "disable_stitch": False
@@ -216,16 +177,30 @@ def upload_to_tiktok(access_token, video_path, title):
 if __name__ == "__main__":
     print("Starting TikTok News Bot...")
     
-    if not CLIENT_KEY or not CLIENT_SECRET or not REFRESH_TOKEN:
+    if not CLIENT_KEY or not CLIENT_SECRET or not REFRESH_TOKEN or not GROQ_API_KEY:
         print("❌ Error: One or more secrets are missing in GitHub!")
     else:
         token = get_access_token()
         if token:
             news = get_news_data()
             if news and news.get('title'):
-                print(f"Title: {news['title']}")
-                video_file = create_video_from_image(news['title'], news['text'], news['image_url'])
-                upload_to_tiktok(token, video_file, news['title'])
+                print(f"Original Title: {news['title']}")
+                
+                # استخدام Groq للتلخيص
+                final_caption = summarize_with_groq(news['text'])
+                
+                # لو Groq فشل لأي سبب، نستخدم العنوان الأصلي كخطة بديلة
+                if not final_caption:
+                    print("Using fallback caption (Original Title).")
+                    final_caption = news['title']
+                
+                print(f"Final Caption: \n{final_caption}")
+                
+                # إنشاء الفيديو من الصورة بدون نصوص
+                video_file = create_video_from_image(news['image_url'])
+                
+                # رفع الفيديو
+                upload_to_tiktok(token, video_file, final_caption)
             else:
                 print("Failed to get news data.")
         else:
