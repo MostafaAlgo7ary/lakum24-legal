@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup
 from moviepy.editor import ImageClip
 from PIL import Image, ImageDraw, ImageFont
 import io
+import numpy as np  # <--- السطر الجديد ده
 import arabic_reshaper
 from bidi.algorithm import get_display
 
@@ -27,7 +28,6 @@ def get_access_token():
     if response.status_code == 200:
         return response.json().get('access_token')
     else:
-        # طباعة الخطأ الحقيقي عشان نعرف السبب
         print(f"❌ Token Error Status: {response.status_code}")
         print(f"❌ Token Error Details: {response.text}")
         return None
@@ -60,9 +60,9 @@ def get_news_data():
                 title = soup.title.string
 
             paragraphs = soup.find_all('p')
-            article_text = " ".join([p.get_text().strip() for p in paragraphs if len(p.get_text().strip()) > 30])
+            article_text = " ".join([p.get_text().strip() for p in paragraphs if len(p.get_text().strip()) > 20])
             if article_text:
-                text_content = article_text[:400] + "..."
+                text_content = article_text
             else:
                 text_content = "لم يتم العثور على نص كافٍ في هذا الرابط."
 
@@ -100,20 +100,12 @@ def create_video_from_image(title, text, image_url, output_path="output_video.mp
     img = Image.open(io.BytesIO(img_resp.content)).convert("RGB")
     
     img = img.resize((1080, 1920))
-    overlay = Image.new('RGBA', img.size, (0, 0, 0, 150))
+    overlay = Image.new('RGBA', img.size, (0, 0, 0, 180))
     img = Image.alpha_composite(img.convert('RGBA'), overlay).convert('RGB')
 
     draw = ImageDraw.Draw(img)
-    
     font_path = "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf"
-    try:
-        title_font = ImageFont.truetype(font_path, 70)
-        text_font = ImageFont.truetype(font_path, 55)
-    except:
-        print("Warning: Arabic font not found, using default.")
-        title_font = ImageFont.load_default()
-        text_font = ImageFont.load_default()
-
+    
     fixed_title = fix_arabic(title)
     fixed_text = fix_arabic(text)
 
@@ -134,22 +126,44 @@ def create_video_from_image(title, text, image_url, output_path="output_video.mp
             lines.append(current_line.strip())
         return lines
 
-    y_text = 300
+    try:
+        title_font = ImageFont.truetype(font_path, 65)
+    except:
+        title_font = ImageFont.load_default()
+        
+    y_text = 150
     title_lines = wrap_text(fixed_title, title_font, 950, draw)
     for line in title_lines:
         draw.text((60, y_text), line, font=title_font, fill="yellow")
-        y_text += 90
-
-    y_text += 50
-    text_lines = wrap_text(fixed_text, text_font, 950, draw)
-    for line in text_lines:
-        if y_text > 1800:
-            break
-        draw.text((60, y_text), line, font=text_font, fill="white")
         y_text += 80
 
+    y_text += 50
+    
+    available_height = 1800 - y_text
+    font_size = 55
+    while True:
+        try:
+            text_font = ImageFont.truetype(font_path, font_size)
+        except:
+            text_font = ImageFont.load_default()
+            
+        text_lines = wrap_text(fixed_text, text_font, 950, draw)
+        total_text_height = len(text_lines) * (font_size + 10)
+        
+        if total_text_height <= available_height or font_size <= 20:
+            break
+        font_size -= 2
+
+    print(f"Using font size {font_size} for text length {len(text)}")
+    
+    for line in text_lines:
+        draw.text((60, y_text), line, font=text_font, fill="white")
+        y_text += (font_size + 10)
+
     print("Creating 5-second video...")
-    clip = ImageClip(img).set_duration(5)
+    
+    # التعديل هنا: تحويل الصورة لـ numpy array
+    clip = ImageClip(np.array(img)).set_duration(5)
     clip.write_videofile(output_path, fps=24, codec='libx264', audio=False)
     return output_path
 
@@ -202,7 +216,6 @@ def upload_to_tiktok(access_token, video_path, title):
 if __name__ == "__main__":
     print("Starting TikTok News Bot...")
     
-    # التأكد إن المتغيرات موجودة
     if not CLIENT_KEY or not CLIENT_SECRET or not REFRESH_TOKEN:
         print("❌ Error: One or more secrets are missing in GitHub!")
     else:
