@@ -26,11 +26,13 @@ def get_access_token():
     response = requests.post(url, data=payload, headers=headers)
     if response.status_code == 200:
         return response.json().get('access_token')
-    print("Token Error:", response.text)
-    return None
+    else:
+        # طباعة الخطأ الحقيقي عشان نعرف السبب
+        print(f"❌ Token Error Status: {response.status_code}")
+        print(f"❌ Token Error Details: {response.text}")
+        return None
 
 def fix_arabic(text):
-    """إصلاح الحروف العربية لتظهر متصلة وصحيحة"""
     reshaped_text = arabic_reshaper.reshape(text)
     bidi_text = get_display(reshaped_text)
     return bidi_text
@@ -47,19 +49,16 @@ def get_news_data():
             resp = requests.get(NEWS_URL, headers=headers, timeout=15)
             soup = BeautifulSoup(resp.text, 'html.parser')
 
-            # جلب الصورة الرئيسية
             og_image = soup.find('meta', property='og:image')
             if og_image and og_image.get('content'):
                 image_url = og_image['content']
             
-            # جلب العنوان
             og_title = soup.find('meta', property='og:title')
             if og_title and og_title.get('content'):
                 title = og_title['content']
             elif soup.title:
                 title = soup.title.string
 
-            # جلب نص الخبر (أول 400 حرف عشان يظهروا في الفيديو)
             paragraphs = soup.find_all('p')
             article_text = " ".join([p.get_text().strip() for p in paragraphs if len(p.get_text().strip()) > 30])
             if article_text:
@@ -71,7 +70,6 @@ def get_news_data():
             print("Error scraping URL:", e)
             return None
     else:
-        # الوضع التلقائي: جلب أخبار من RSS
         print("Fetching automatic news from RSS...")
         url = "https://news.google.com/rss/search?q=أخبار+عامة&hl=ar&gl=EG&ceid=EG:ar"
         feed = feedparser.parse(url)
@@ -91,7 +89,6 @@ def get_news_data():
         except Exception:
             pass
 
-    # صورة افتراضية لو مفيش صورة
     if not image_url:
         image_url = "https://picsum.photos/1080/1920"
 
@@ -102,14 +99,12 @@ def create_video_from_image(title, text, image_url, output_path="output_video.mp
     img_resp = requests.get(image_url, timeout=15)
     img = Image.open(io.BytesIO(img_resp.content)).convert("RGB")
     
-    # مقاس 9:16 لتيك توك مع تعتيم الصورة شوية عشان النص يبان
     img = img.resize((1080, 1920))
     overlay = Image.new('RGBA', img.size, (0, 0, 0, 150))
     img = Image.alpha_composite(img.convert('RGBA'), overlay).convert('RGB')
 
     draw = ImageDraw.Draw(img)
     
-    # تحميل خط عربي من السيرفر
     font_path = "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf"
     try:
         title_font = ImageFont.truetype(font_path, 70)
@@ -119,18 +114,15 @@ def create_video_from_image(title, text, image_url, output_path="output_video.mp
         title_font = ImageFont.load_default()
         text_font = ImageFont.load_default()
 
-    # تجهيز النصوص
     fixed_title = fix_arabic(title)
     fixed_text = fix_arabic(text)
 
-    # دالة لتقسيم النص لأسطر
     def wrap_text(text, font, max_width, draw):
         lines = []
         words = text.split()
         current_line = ""
         for word in words:
             test_line = current_line + word + " "
-            # قياس عرض النص
             bbox = draw.textbbox((0, 0), test_line, font=font)
             width = bbox[2] - bbox[0]
             if width <= max_width:
@@ -142,18 +134,16 @@ def create_video_from_image(title, text, image_url, output_path="output_video.mp
             lines.append(current_line.strip())
         return lines
 
-    # رسم العنوان في النص
     y_text = 300
     title_lines = wrap_text(fixed_title, title_font, 950, draw)
     for line in title_lines:
         draw.text((60, y_text), line, font=title_font, fill="yellow")
         y_text += 90
 
-    # رسم نص الخبر تحت العنوان
     y_text += 50
     text_lines = wrap_text(fixed_text, text_font, 950, draw)
     for line in text_lines:
-        if y_text > 1800: # عشان منخرجش برة الفيديو
+        if y_text > 1800:
             break
         draw.text((60, y_text), line, font=text_font, fill="white")
         y_text += 80
@@ -172,8 +162,8 @@ def upload_to_tiktok(access_token, video_path, title):
     video_size = os.path.getsize(video_path)
     payload = {
         "post_info": {
-            "title": title[:150], # تيك توك بيقبل عنوان لحد 150 حرف
-            "privacy_level": "SELF_ONLY", # في وضع التجربة لازم تكون خاصة
+            "title": title[:150],
+            "privacy_level": "SELF_ONLY",
             "disable_duet": False,
             "disable_comment": False,
             "disable_stitch": False
@@ -211,14 +201,19 @@ def upload_to_tiktok(access_token, video_path, title):
 
 if __name__ == "__main__":
     print("Starting TikTok News Bot...")
-    token = get_access_token()
-    if token:
-        news = get_news_data()
-        if news and news.get('title'):
-            print(f"Title: {news['title']}")
-            video_file = create_video_from_image(news['title'], news['text'], news['image_url'])
-            upload_to_tiktok(token, video_file, news['title'])
-        else:
-            print("Failed to get news data.")
+    
+    # التأكد إن المتغيرات موجودة
+    if not CLIENT_KEY or not CLIENT_SECRET or not REFRESH_TOKEN:
+        print("❌ Error: One or more secrets are missing in GitHub!")
     else:
-        print("Failed to get access token.")
+        token = get_access_token()
+        if token:
+            news = get_news_data()
+            if news and news.get('title'):
+                print(f"Title: {news['title']}")
+                video_file = create_video_from_image(news['title'], news['text'], news['image_url'])
+                upload_to_tiktok(token, video_file, news['title'])
+            else:
+                print("Failed to get news data.")
+        else:
+            print("Failed to get access token.")
