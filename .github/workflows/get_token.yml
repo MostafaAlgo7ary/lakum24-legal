@@ -4,12 +4,27 @@ jobs:
   exchange-code:
     runs-on: ubuntu-latest
     steps:
-      - name: Exchange Code
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          
+      - name: Exchange Code via Python
+        env:
+          CLIENT_KEY: ${{ secrets.TIKTOK_CLIENT_KEY }}
+          CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
         run: |
-          curl -X POST 'https://open.tiktokapis.com/v2/oauth/token/' \
-          -H 'Content-Type: application/x-www-form-urlencoded' \
-          -d 'client_key=${{ secrets.TIKTOK_CLIENT_KEY }}' \
-          -d 'client_secret=${{ secrets.TIKTOK_CLIENT_SECRET }}' \
-          -d 'code=ddgWjPvsenkbLCOgL-fNPWIfPz7Ttlf__X2vt9ppKfekNPbtuQv-20mznG9WEViEmt7wEOSc4fFCiv6Xgu3w2JiiOJNkZ89FaZwGaamX5LNEjBu1WLS5hpwSuWnl7UrNX0XQQLaCBPTAJknJ_jy8xNQg3mfQ0W36K2pEfT7BHTWvWes6yrNcRIObKXhQM7CsZh62PFaWupqxb9Sx_TS7fN24vUWtZdBKbFp6qU2toxLioBcjh5cl32VAW2OXMS_Bq9CfaRLIXA4gDM04*!4896.e1' \
-          -d 'grant_type=authorization_code' \
-          -d 'redirect_uri=https://mostafaalgo7ary.github.io/lakum24-legal/callback.html'
+          python -c "
+          import requests, os
+          url = 'https://open.tiktokapis.com/v2/oauth/token/'
+          payload = {
+              'client_key': os.environ['CLIENT_KEY'],
+              'client_secret': os.environ['CLIENT_SECRET'],
+              'code': 'E50DNRxwYEpGFRcj9NpZ5MQ1JHdMn72OsBukk50lDoqyRHenrmP2qRPK4zpBgdcessruz2Zb884BcyTqfP2q_VP9l-cHPUGIsBy37Cxh4wTN8IsRUc2vezUirdt1TuJ1LaBYTB4lrSqy3kxbAaP3E2SqHInMrq9K7ArdIhHgRIaexhJiqsjHnnymrawrcFAR8jPGMjefBNiwsONeytvz-BH8KQrBfoGcoB4up8jfM0JNrB7oQ4QMQqts9zZfRH3MIDRVT0AD-7TOtgvQ*!4884.e1',
+              'grant_type': 'authorization_code',
+              'redirect_uri': 'https://mostafaalgo7ary.github.io/lakum24-legal/callback.html'
+          }
+          headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+          r = requests.post(url, data=payload, headers=headers)
+          print(r.text)
+          "
