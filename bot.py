@@ -22,7 +22,6 @@ SOURCE_URL = os.environ.get('SOURCE_URL', '').strip()
 PRIVACY_LEVEL = os.environ.get('PRIVACY_LEVEL', 'SELF_ONLY').strip()
 KEYWORD_FILTER = os.environ.get('KEYWORD_FILTER', '').strip()
 
-# تم إلغاء خيار الصوت تماماً زي ما طلبت
 ENABLE_AUDIO = False 
 
 CAPTION_PREFIX = os.environ.get('CAPTION_PREFIX', '').strip()
@@ -59,18 +58,19 @@ def summarize_with_groq(title, text):
         "meta-llama/llama-4-maverick-17b-128e-instruct"
     ]
 
-    # أوامر صارمة جداً لإجبار الذكاء الاصطناعي على الهيكل واللغة العربية فقط
+    # أوامر صارمة جداً لإجبار الذكاء الاصطناعي على الهيكل واللغة العربية والتنسيق بمسافات
     system_prompt = (
         "أنت محرر أخبار محترف. اكتب الكابشن باللغة العربية الفصحى فقط. "
         "يُمنع منعاً باتاً كتابة أي كلمة بالإنجليزية (اكتب أسماء المشاهير بالحروف العربية). "
-        "يجب أن يتكون الكابشن من الأجزاء التالية بالترتيب وبدون أي عناوين جانبية مثل (مقدمة أو محتوى): "
+        "يجب أن يتكون الكابشن من الأجزاء التالية بالترتيب: "
         "1. المقدمة (هوك): سؤال قوي أو جملة صادمة تجذب الانتباه فوراً. "
         "2. المحتوى: شرح تفاصيل الخبر بأسلوب شيق لا يقل عن 100 كلمة ولا يتجاوز 150 كلمة. "
-        "3. الدعوة (CTA): جملة تشجع المشاهد على المتابعة والاشتراك (مثال: تابعنا للمزيد من الأخبار). "
-        "شروط صارمة جداً: "
+        "3. الدعوة (CTA): جملة تشجع المشاهد على المتابعة والاشتراك. "
+        "شروط صارمة جداً للتنسيق: "
+        "- ضع سطراً فارغاً (مسافة إضافية) بين المقدمة، ومحتوى الخبر، والدعوة للتفاعل. اجعل كل قسم في فقرة منفصلة. "
         "- يُمنع منعاً باتاً استخدام أي رموز مثل النجمة (*) أو الهاشتاج (#) داخل النص الأساسي. "
         "- يُمنع ذكر اسم أي موقع أو مصدر إخباري. "
-        "- الهاشتاجات: أضف 10 هاشتاجات فقط في سطر منفصل في النهاية. وإذا كان الهاشتاج من أكثر من كلمة، اربطهم بشرطة سفلية (_) وليس بمسافة. "
+        "- الهاشتاجات: أضف 10 هاشتاجات فقط في سطر منفصل في النهاية (بعد سطر فارغ). وإذا كان الهاشتاج من أكثر من كلمة، اربطهم بشرطة سفلية (_) وليس بمسافة. "
         "- لا تكتب أي مقدمات مثل 'إليك الخبر' أو 'هذا هو النص'، ابدأ بالهوك مباشرة."
     )
 
@@ -89,15 +89,15 @@ def summarize_with_groq(title, text):
                     }
                 ],
                 model=model_name,
-                temperature=0.5, # تقليل الحرارة عشان يلتزم بالتعليمات أكتر
+                temperature=0.5,
                 max_tokens=1500,
             )
             result = chat_completion.choices[0].message.content
             
-            # تنظيف احتياطي لأي رموز تسربت
+            # 1. تنظيف احتياطي لأي رموز تسربت
             cleaned_result = re.sub(r'\*+', '', result)
             
-            # فصل الهاشتاجات عن النص لضمان عدم وجود # في البوست
+            # 2. فصل الهاشتاجات عن النص الأساسي
             lines = cleaned_result.split('\n')
             text_body = []
             hashtags = []
@@ -108,9 +108,15 @@ def summarize_with_groq(title, text):
                 else:
                     text_body.append(line)
             
-            final_text = "\n".join(text_body).strip()
+            # 3. إعادة تنسيق النص الأساسي بحيث كل فقرة تكون منفصلة بسطر فارغ
+            clean_paragraphs = [p.strip() for p in text_body if p.strip()]
+            final_text = "\n\n".join(clean_paragraphs)
+            
+            # 4. إضافة الهاشتاجات في النهاية مع سطر فارغ
             if hashtags:
-                final_text += "\n\n" + " ".join(hashtags)
+                # إزالة أي تكرار في الهاشتاجات
+                unique_hashtags = list(dict.fromkeys(hashtags))
+                final_text += "\n\n" + " ".join(unique_hashtags)
                 
             print(f"✅ Success with {model_name}!")
             return final_text.strip()
@@ -239,10 +245,7 @@ def create_video_from_image(image_url, output_path="output_video.mp4"):
     background.paste(img, (paste_x, paste_y))
 
     print("Creating 5-second video WITHOUT zoom or audio...")
-    # شيلنا الزوم خالص (مفيش resize هنا)
     clip = ImageClip(np.array(background)).set_duration(5)
-    
-    # شيلنا الصوت خالص
     clip.write_videofile(output_path, fps=24, codec='libx264', audio=False)
     return output_path
 
