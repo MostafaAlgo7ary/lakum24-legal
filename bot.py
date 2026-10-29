@@ -7,16 +7,29 @@ from PIL import Image
 import io
 import numpy as np
 import re
-import random
 from groq import Groq
 
-# --- الإعدادات ---
+# --- الإعدادات الأساسية ---
 CLIENT_KEY = os.environ.get('TIKTOK_CLIENT_KEY')
 CLIENT_SECRET = os.environ.get('TIKTOK_CLIENT_SECRET')
 REFRESH_TOKEN = os.environ.get('TIKTOK_REFRESH_TOKEN')
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
+
+# --- الإعدادات القادمة من GitHub Actions ---
 NEWS_URL = os.environ.get('NEWS_URL', '').strip()
 SOURCE_URL = os.environ.get('SOURCE_URL', '').strip()
+PRIVACY_LEVEL = os.environ.get('PRIVACY_LEVEL', 'SELF_ONLY').strip()
+
+# معالجة اختيار "none" من القوائم المنسدلة
+KEYWORD_FILTER = os.environ.get('KEYWORD_FILTER', '').strip()
+if KEYWORD_FILTER.lower() == 'none':
+    KEYWORD_FILTER = ''
+
+CAPTION_PREFIX = os.environ.get('CAPTION_PREFIX', '').strip()
+if CAPTION_PREFIX.lower() == 'none':
+    CAPTION_PREFIX = ''
+
+ENABLE_AUDIO = os.environ.get('ENABLE_AUDIO', 'true').strip().lower() == 'true'
 
 groq_client = Groq(api_key=GROQ_API_KEY)
 
@@ -96,12 +109,13 @@ def extract_news_links_from_html(url):
     return links
 
 def get_latest_article_from_source(source_url, posted_urls):
-    """دالة مساعدة تجيب أحدث خبر من مصدر معين"""
     if 'almasryalyoum.com/rss' in source_url:
         try:
             feed = feedparser.parse(source_url)
             for entry in feed.entries:
                 if entry.link not in posted_urls:
+                    if KEYWORD_FILTER and KEYWORD_FILTER not in entry.title:
+                        continue
                     return entry.link
         except Exception as e:
             print(f"Error reading RSS {source_url}: {e}")
@@ -110,7 +124,9 @@ def get_latest_article_from_source(source_url, posted_urls):
         links = extract_news_links_from_html(source_url)
         for link in links:
             if link not in posted_urls:
-                return link
+                if not KEYWORD_FILTER:
+                    return link
+                return link 
     return None
 
 def get_news_from_sources():
@@ -119,7 +135,6 @@ def get_news_from_sources():
         with open('posted_history.txt', 'r', encoding='utf-8') as f:
             posted_urls = set(line.strip() for line in f)
 
-    # 1. لو المستخدم حط رابط مصدر يدوياً
     if SOURCE_URL:
         print(f"Using manual Source URL: {SOURCE_URL}")
         article_url = get_latest_article_from_source(SOURCE_URL, posted_urls)
@@ -129,7 +144,6 @@ def get_news_from_sources():
             print("⚠️ No new articles found in the provided source URL.")
             return None
 
-    # 2. لو مفيش مدخلات، نقرأ من ملف sources.txt (النظام الدائري)
     print("Reading sources from sources.txt...")
     if not os.path.exists('sources.txt'):
         print("❌ sources.txt not found!")
@@ -185,6 +199,10 @@ def scrape_full_article(article_url, fallback_text=""):
         elif soup.title:
             title = soup.title.string
 
+        if KEYWORD_FILTER and KEYWORD_FILTER not in title:
+            print(f"❌ Keyword '{KEYWORD_FILTER}' not found in title. Skipping this article.")
+            return None, None, None
+
         og_image = soup.find('meta', property='og:image')
         if og_image and og_image.get('content'):
             image_url = og_image['content']
@@ -220,25 +238,29 @@ def create_video_from_image(image_url, output_path="output_video.mp4"):
     img = Image.open(io.BytesIO(img_resp.content)).convert("RGB")
     img = img.resize((1080, 1920))
     
-    print("Creating 5-second video with zoom effect and audio...")
+    print("Creating 5-second video with zoom effect...")
     clip = ImageClip(np.array(img)).set_duration(5)
     clip = clip.resize(lambda t: 1 + 0.05 * t)
     
-    try:
-        audio_url = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
-        audio_resp = requests.get(audio_url, timeout=15)
-        with open("bg_music.mp3", "wb") as f:
-            f.write(audio_resp.content)
-        audioclip = AudioFileClip("bg_music.mp3").subclip(0, 5)
-        clip = clip.set_audio(audioclip)
-    except Exception as e:
-        print(f"⚠️ Could not add audio (continuing without it): {e}")
+    if ENABLE_AUDIO:
+        print("Adding background audio...")
+        try:
+            audio_url = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
+            audio_resp = requests.get(audio_url, timeout=15)
+            with open("bg_music.mp3", "wb") as f:
+                f.write(audio_resp.content)
+            audioclip = AudioFileClip("bg_music.mp3").subclip(0, 5)
+            clip = clip.set_audio(audioclip)
+        except Exception as e:
+            print(f"⚠️ Could not add audio (continuing without it): {e}")
+    else:
+        print("Audio is disabled. Creating silent video.")
 
     clip.write_videofile(output_path, fps=24, codec='libx264', audio_codec='aac')
     return output_path
 
 def upload_to_tiktok_direct(access_token, video_path, caption):
-    print("Uploading video via Direct Post (with Caption)...")
+    print(f"Uploading video via Direct Post (Privacy: {PRIVACY_LEVEL})...")
     init_url = "https://open.tiktokapis.com/v2/post/publish/video/init/"
     headers = {
         "Authorization": f"Bearer {access_token}",
@@ -249,7 +271,7 @@ def upload_to_tiktok_direct(access_token, video_path, caption):
     payload = {
         "post_info": {
             "title": caption[:2200], 
-            "privacy_level": "SELF_ONLY", 
+            "privacy_level": PRIVACY_LEVEL,
             "disable_duet": False,
             "disable_comment": False,
             "disable_stitch": False
@@ -305,13 +327,12 @@ if __name__ == "__main__":
             text_to_summarize = ""
             image_url = ""
 
-            # الأولوية القصوى: لو في رابط خبر محدد
             if NEWS_URL:
                 print("Using manual News Article URL provided by user.")
                 title, text_to_summarize, image_url = scrape_full_article(NEWS_URL, "خبر جديد")
-                article_url_to_save = NEWS_URL
+                if title:
+                    article_url_to_save = NEWS_URL
             
-            # الأولوية التانية: لو في رابط مصدر محدد أو النظام التلقائي
             else:
                 print("Looking for the latest news from sources...")
                 news_data = get_news_from_sources()
@@ -319,7 +340,7 @@ if __name__ == "__main__":
                     article_url_to_save = news_data['url']
                     title, text_to_summarize, image_url = scrape_full_article(article_url_to_save, "")
             
-            if article_url_to_save and text_to_summarize:
+            if article_url_to_save and text_to_summarize and title:
                 print(f"Title: {title}")
                 final_caption = summarize_with_groq(title, text_to_summarize)
                 
@@ -328,6 +349,9 @@ if __name__ == "__main__":
                     clean_text = re.sub(r'\|.*', '', text_to_summarize).strip()
                     final_caption = f"{clean_text[:800]}...\n\n#أخبار #تيك_توك"
                 
+                if CAPTION_PREFIX:
+                    final_caption = f"{CAPTION_PREFIX}\n\n{final_caption}"
+                
                 print(f"Generated Caption: \n{final_caption}\n")
                 
                 video_file = create_video_from_image(image_url)
@@ -335,6 +359,6 @@ if __name__ == "__main__":
                 if upload_to_tiktok_direct(token, video_file, final_caption):
                     save_to_history(article_url_to_save)
             else:
-                print("Failed to get news data or no new news available.")
+                print("Failed to get news data, no new news available, or keyword not found.")
         else:
             print("Failed to get access token.")
