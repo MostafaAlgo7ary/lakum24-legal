@@ -57,6 +57,21 @@ def summarize_with_groq(title, text):
         "meta-llama/llama-4-maverick-17b-128e-instruct"
     ]
 
+    # الأوامر الجديدة الصارمة
+    system_prompt = (
+        "أنت محرر وصانع محتوى رياضي وعام محترف على تيك توك. مهمتك هي إعادة صياغة الخبر التالي بأسلوبك الخاص. "
+        "يجب أن يتكون الكابشن من الأجزاء التالية بالترتيب وبدون أي عناوين جانبية: "
+        "1. مقدمة (هوك): جملة قوية ومثيرة جداً تجذب الانتباه فوراً. "
+        "2. محتوى الخبر: لا يقل عن 100 كلمة، ويشمل كل المعلومات الهامة بأسلوب شيق. "
+        "3. دعوة لاتخاذ إجراء (CTA): جملة تشجع المشاهد على المتابعة والاشتراك في النهاية. "
+        "شروط صارمة جداً: "
+        "- إجمالي الكلمات لا يتجاوز 200 كلمة. "
+        "- يُمنع منعاً باتاً استخدام أي رموز تنسيق مثل (النجمة * أو ## أو ###) في النص. "
+        "- يُمنع استخدام علامة (الهاشتاج #) داخل النص الأساسي. الهاشتاجات توضع فقط في سطر منفصل في النهاية. "
+        "- يُمنع ذكر اسم أي موقع أو مصدر إخباري. "
+        "- الهاشتاجات: أضف من 5 إلى 10 هاشتاجات دقيقة جداً في سطر منفصل في النهاية. إذا كان الهاشتاج من أكثر من كلمة، اربطهم بشرطة سفلية (_) وليس بمسافة."
+    )
+
     for model_name in models_to_try:
         print(f"🔄 Trying model: {model_name}")
         try:
@@ -64,7 +79,7 @@ def summarize_with_groq(title, text):
                 messages=[
                     {
                         "role": "system",
-                        "content": "أنت محرر وصانع محتوى رياضي وعام محترف على تيك توك. مهمتك هي قراءة الخبر التالي وإعادة صياغته وترجمته إلى لغة عربية فصحى قوية وسليمة. استخدم أسلوباً صحفياً احترافياً ومفهوماً. يجب أن يحتوي النص الجديد على كل المعلومات والتفاصيل الهامة. استخدم تنسيقاً جذاباً (مثل النقاط والإيموجي). تحذير هام جداً: يُمنع منعاً باتاً استخدام أي رموز تنسيق مثل النجمة (**) في النص الأساسي. يُمنع منعاً باتاً ذكر اسم أي موقع أو مصدر إخباري. لا تكتب أي مقدمات. في النهاية، أضف 10 هاشتاجات دقيقة جداً ومرتبطة حصرياً بموضوع الخبر. قاعدة إجبارية للهاشتاجات: إذا كان الهاشتاج يتكون من أكثر من كلمة، يجب ربط الكلمات بعلامة الشرطة السفلية ( _ ) وليس بمسافة."
+                        "content": system_prompt
                     },
                     {
                         "role": "user",
@@ -76,9 +91,30 @@ def summarize_with_groq(title, text):
                 max_tokens=1500,
             )
             result = chat_completion.choices[0].message.content
-            cleaned_result = re.sub(r'\*+', '', result)
+            
+            # تنظيف احتياطي لأي رموز تسربت
+            cleaned_result = re.sub(r'\*+', '', result) # مسح النجوم
+            cleaned_result = re.sub(r'#+', '', cleaned_result) # مسح الهاشتاجات من النص الأساسي
+            
+            # هنرجع الهاشتاجات في سطر منفصل بعد ما شيلنا كل الـ # من النص
+            # الخطوة دي بتضمن إن الهاشتاجات بس هي اللي فيها #
+            lines = cleaned_result.split('\n')
+            text_body = []
+            hashtags = []
+            
+            for line in lines:
+                if '#' in line:
+                    hashtags.extend(line.split())
+                else:
+                    text_body.append(line)
+            
+            final_text = "\n".join(text_body).strip()
+            if hashtags:
+                # إضافة الهاشتاجات في النهاية
+                final_text += "\n\n" + " ".join(hashtags)
+                
             print(f"✅ Success with {model_name}!")
-            return cleaned_result.strip()
+            return final_text.strip()
         except Exception as e:
             print(f"❌ Model {model_name} failed: {e}")
             continue
@@ -189,11 +225,9 @@ def create_video_from_image(image_url, output_path="output_video.mp4"):
     img_resp = requests.get(image_url, timeout=15)
     img = Image.open(io.BytesIO(img_resp.content)).convert("RGB")
 
-    # --- التعديل الجديد: وضع الصورة في منتصف خلفية سوداء بدون تمدد ---
     target_w, target_h = 1080, 1920
-    background = Image.new("RGB", (target_w, target_h), (0, 0, 0)) # خلفية سوداء
+    background = Image.new("RGB", (target_w, target_h), (0, 0, 0)) 
     
-    # حساب أبعاد الصورة الجديدة مع الحفاظ على التناسب
     img_w, img_h = img.size
     ratio = min(target_w / img_w, target_h / img_h)
     new_w = int(img_w * ratio)
@@ -201,11 +235,9 @@ def create_video_from_image(image_url, output_path="output_video.mp4"):
     
     img = img.resize((new_w, new_h), Image.LANCZOS)
     
-    # وضع الصورة في المنتصف
     paste_x = (target_w - new_w) // 2
     paste_y = (target_h - new_h) // 2
     background.paste(img, (paste_x, paste_y))
-    # -------------------------------------------------------------------
 
     print("Creating 5-second video with zoom effect...")
     clip = ImageClip(np.array(background)).set_duration(5)
@@ -256,8 +288,8 @@ def upload_to_tiktok_direct(access_token, video_path, caption):
     init_resp = requests.post(init_url, json=payload, headers=headers)
     if init_resp.status_code != 200:
         print("Init Error:", init_resp.text)
-        if "spam_risk_too_many_posts" in init_resp.text:
-            return "SPAM"
+        if "spam_risk_too_many_posts" in init_resp.text or "unaudited_client_can_only_post_to_private_accounts" in init_resp.text:
+            return "FATAL_ERROR"
         return False
         
     upload_url = init_resp.json()['data']['upload_url']
@@ -313,8 +345,8 @@ if __name__ == "__main__":
                     if upload_result == True:
                         save_to_history(NEWS_URL)
                         uploaded_successfully = True
-                    elif upload_result == "SPAM":
-                        print("🛑 TikTok SPAM block detected. Exiting immediately to save resources.")
+                    elif upload_result == "FATAL_ERROR":
+                        print("🛑 TikTok FATAL ERROR (Spam/Unaudited). Exiting immediately.")
                         sys.exit(0)
                 else:
                     print("❌ Failed to scrape the provided news URL or keyword didn't match.")
@@ -383,8 +415,8 @@ if __name__ == "__main__":
                                         f.write(str(current_idx))
                                 
                                 break 
-                            elif upload_result == "SPAM":
-                                print("🛑 TikTok SPAM block detected. Exiting immediately to save resources.")
+                            elif upload_result == "FATAL_ERROR":
+                                print("🛑 TikTok FATAL ERROR (Spam/Unaudited). Exiting immediately.")
                                 sys.exit(0) 
                     
                     if uploaded_successfully:
