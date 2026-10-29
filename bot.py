@@ -2,7 +2,7 @@ import os
 import requests
 import feedparser
 from bs4 import BeautifulSoup
-from moviepy.editor import ImageClip, AudioFileClip
+from moviepy.editor import ImageClip
 from PIL import Image
 import io
 import numpy as np
@@ -21,7 +21,9 @@ NEWS_URL = os.environ.get('NEWS_URL', '').strip()
 SOURCE_URL = os.environ.get('SOURCE_URL', '').strip()
 PRIVACY_LEVEL = os.environ.get('PRIVACY_LEVEL', 'SELF_ONLY').strip()
 KEYWORD_FILTER = os.environ.get('KEYWORD_FILTER', '').strip()
-ENABLE_AUDIO = os.environ.get('ENABLE_AUDIO', 'true').strip().lower() == 'true'
+
+# تم إلغاء خيار الصوت تماماً زي ما طلبت
+ENABLE_AUDIO = False 
 
 CAPTION_PREFIX = os.environ.get('CAPTION_PREFIX', '').strip()
 if CAPTION_PREFIX.lower() == 'none':
@@ -46,7 +48,7 @@ def get_access_token():
         return None
 
 def summarize_with_groq(title, text):
-    print("Generating translated & rewritten article with Groq...")
+    print("Generating strictly formatted Arabic caption with Groq...")
     truncated_text = text[:4000].strip()
     if not truncated_text:
         truncated_text = title
@@ -57,19 +59,19 @@ def summarize_with_groq(title, text):
         "meta-llama/llama-4-maverick-17b-128e-instruct"
     ]
 
-    # الأوامر الجديدة الصارمة
+    # أوامر صارمة جداً لإجبار الذكاء الاصطناعي على الهيكل واللغة العربية فقط
     system_prompt = (
-        "أنت محرر وصانع محتوى رياضي وعام محترف على تيك توك. مهمتك هي إعادة صياغة الخبر التالي بأسلوبك الخاص. "
-        "يجب أن يتكون الكابشن من الأجزاء التالية بالترتيب وبدون أي عناوين جانبية: "
-        "1. مقدمة (هوك): جملة قوية ومثيرة جداً تجذب الانتباه فوراً. "
-        "2. محتوى الخبر: لا يقل عن 100 كلمة، ويشمل كل المعلومات الهامة بأسلوب شيق. "
-        "3. دعوة لاتخاذ إجراء (CTA): جملة تشجع المشاهد على المتابعة والاشتراك في النهاية. "
+        "أنت محرر أخبار محترف. اكتب الكابشن باللغة العربية الفصحى فقط. "
+        "يُمنع منعاً باتاً كتابة أي كلمة بالإنجليزية (اكتب أسماء المشاهير بالحروف العربية). "
+        "يجب أن يتكون الكابشن من الأجزاء التالية بالترتيب وبدون أي عناوين جانبية مثل (مقدمة أو محتوى): "
+        "1. المقدمة (هوك): سؤال قوي أو جملة صادمة تجذب الانتباه فوراً. "
+        "2. المحتوى: شرح تفاصيل الخبر بأسلوب شيق لا يقل عن 100 كلمة ولا يتجاوز 150 كلمة. "
+        "3. الدعوة (CTA): جملة تشجع المشاهد على المتابعة والاشتراك (مثال: تابعنا للمزيد من الأخبار). "
         "شروط صارمة جداً: "
-        "- إجمالي الكلمات لا يتجاوز 200 كلمة. "
-        "- يُمنع منعاً باتاً استخدام أي رموز تنسيق مثل (النجمة * أو ## أو ###) في النص. "
-        "- يُمنع استخدام علامة (الهاشتاج #) داخل النص الأساسي. الهاشتاجات توضع فقط في سطر منفصل في النهاية. "
+        "- يُمنع منعاً باتاً استخدام أي رموز مثل النجمة (*) أو الهاشتاج (#) داخل النص الأساسي. "
         "- يُمنع ذكر اسم أي موقع أو مصدر إخباري. "
-        "- الهاشتاجات: أضف من 5 إلى 10 هاشتاجات دقيقة جداً في سطر منفصل في النهاية. إذا كان الهاشتاج من أكثر من كلمة، اربطهم بشرطة سفلية (_) وليس بمسافة."
+        "- الهاشتاجات: أضف 10 هاشتاجات فقط في سطر منفصل في النهاية. وإذا كان الهاشتاج من أكثر من كلمة، اربطهم بشرطة سفلية (_) وليس بمسافة. "
+        "- لا تكتب أي مقدمات مثل 'إليك الخبر' أو 'هذا هو النص'، ابدأ بالهوك مباشرة."
     )
 
     for model_name in models_to_try:
@@ -87,17 +89,15 @@ def summarize_with_groq(title, text):
                     }
                 ],
                 model=model_name,
-                temperature=0.6,
+                temperature=0.5, # تقليل الحرارة عشان يلتزم بالتعليمات أكتر
                 max_tokens=1500,
             )
             result = chat_completion.choices[0].message.content
             
             # تنظيف احتياطي لأي رموز تسربت
-            cleaned_result = re.sub(r'\*+', '', result) # مسح النجوم
-            cleaned_result = re.sub(r'#+', '', cleaned_result) # مسح الهاشتاجات من النص الأساسي
+            cleaned_result = re.sub(r'\*+', '', result)
             
-            # هنرجع الهاشتاجات في سطر منفصل بعد ما شيلنا كل الـ # من النص
-            # الخطوة دي بتضمن إن الهاشتاجات بس هي اللي فيها #
+            # فصل الهاشتاجات عن النص لضمان عدم وجود # في البوست
             lines = cleaned_result.split('\n')
             text_body = []
             hashtags = []
@@ -110,7 +110,6 @@ def summarize_with_groq(title, text):
             
             final_text = "\n".join(text_body).strip()
             if hashtags:
-                # إضافة الهاشتاجات في النهاية
                 final_text += "\n\n" + " ".join(hashtags)
                 
             print(f"✅ Success with {model_name}!")
@@ -239,25 +238,12 @@ def create_video_from_image(image_url, output_path="output_video.mp4"):
     paste_y = (target_h - new_h) // 2
     background.paste(img, (paste_x, paste_y))
 
-    print("Creating 5-second video with zoom effect...")
+    print("Creating 5-second video WITHOUT zoom or audio...")
+    # شيلنا الزوم خالص (مفيش resize هنا)
     clip = ImageClip(np.array(background)).set_duration(5)
-    clip = clip.resize(lambda t: 1 + 0.05 * t)
     
-    if ENABLE_AUDIO:
-        print("Adding background audio...")
-        try:
-            audio_url = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
-            audio_resp = requests.get(audio_url, timeout=15)
-            with open("bg_music.mp3", "wb") as f:
-                f.write(audio_resp.content)
-            audioclip = AudioFileClip("bg_music.mp3").subclip(0, 5)
-            clip = clip.set_audio(audioclip)
-        except Exception as e:
-            print(f"⚠️ Could not add audio (continuing without it): {e}")
-    else:
-        print("Audio is disabled. Creating silent video.")
-
-    clip.write_videofile(output_path, fps=24, codec='libx264', audio_codec='aac')
+    # شيلنا الصوت خالص
+    clip.write_videofile(output_path, fps=24, codec='libx264', audio=False)
     return output_path
 
 def upload_to_tiktok_direct(access_token, video_path, caption):
