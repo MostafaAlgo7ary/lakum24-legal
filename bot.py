@@ -51,7 +51,6 @@ def summarize_with_groq(title, text):
     if not truncated_text:
         truncated_text = title
 
-    # شيلنا الموديل اللي كان بيضرب 404
     models_to_try = [
         "openai/gpt-oss-120b",
         "qwen/qwen3-32b",
@@ -189,10 +188,27 @@ def create_video_from_image(image_url, output_path="output_video.mp4"):
     print("Downloading image...")
     img_resp = requests.get(image_url, timeout=15)
     img = Image.open(io.BytesIO(img_resp.content)).convert("RGB")
-    img = img.resize((1080, 1920))
+
+    # --- التعديل الجديد: وضع الصورة في منتصف خلفية سوداء بدون تمدد ---
+    target_w, target_h = 1080, 1920
+    background = Image.new("RGB", (target_w, target_h), (0, 0, 0)) # خلفية سوداء
     
+    # حساب أبعاد الصورة الجديدة مع الحفاظ على التناسب
+    img_w, img_h = img.size
+    ratio = min(target_w / img_w, target_h / img_h)
+    new_w = int(img_w * ratio)
+    new_h = int(img_h * ratio)
+    
+    img = img.resize((new_w, new_h), Image.LANCZOS)
+    
+    # وضع الصورة في المنتصف
+    paste_x = (target_w - new_w) // 2
+    paste_y = (target_h - new_h) // 2
+    background.paste(img, (paste_x, paste_y))
+    # -------------------------------------------------------------------
+
     print("Creating 5-second video with zoom effect...")
-    clip = ImageClip(np.array(img)).set_duration(5)
+    clip = ImageClip(np.array(background)).set_duration(5)
     clip = clip.resize(lambda t: 1 + 0.05 * t)
     
     if ENABLE_AUDIO:
@@ -240,7 +256,6 @@ def upload_to_tiktok_direct(access_token, video_path, caption):
     init_resp = requests.post(init_url, json=payload, headers=headers)
     if init_resp.status_code != 200:
         print("Init Error:", init_resp.text)
-        # لو الخطأ سبام، نرجع كلمة SPAM عشان نوقف الكود
         if "spam_risk_too_many_posts" in init_resp.text:
             return "SPAM"
         return False
@@ -300,7 +315,7 @@ if __name__ == "__main__":
                         uploaded_successfully = True
                     elif upload_result == "SPAM":
                         print("🛑 TikTok SPAM block detected. Exiting immediately to save resources.")
-                        sys.exit(0) # إيقاف السكربت فوراً
+                        sys.exit(0)
                 else:
                     print("❌ Failed to scrape the provided news URL or keyword didn't match.")
 
@@ -367,10 +382,10 @@ if __name__ == "__main__":
                                         current_idx = sources_to_check.index(source_url)
                                         f.write(str(current_idx))
                                 
-                                break # خروج من حلقة الأخبار
+                                break 
                             elif upload_result == "SPAM":
                                 print("🛑 TikTok SPAM block detected. Exiting immediately to save resources.")
-                                sys.exit(0) # إيقاف السكربت فوراً عشان ميكررش المحاولات
+                                sys.exit(0) 
                     
                     if uploaded_successfully:
                         break
