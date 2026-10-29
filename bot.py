@@ -103,15 +103,28 @@ def extract_news_links_from_html(url):
         print(f"Error extracting links from {url}: {e}")
     return links
 
-def get_latest_article_from_source(source_url, posted_urls):
+def keyword_matches(title, keyword):
+    """دالة ذكية للتحقق من وجود الكلمة المفتاحية"""
+    if not keyword:
+        return True
+    if keyword in title:
+        return True
+    # لو إنت كتبت الكلمة بـ "ال"، الكود هيشيلها ويدور على أصل الكلمة
+    if keyword.startswith('ال') and keyword[2:] in title:
+        return True
+    return False
+
+def get_candidate_urls(source_url, posted_urls, limit=15):
+    """جلب مجموعة روابط أخبار حديثة للتجربة"""
+    urls = []
     if 'almasryalyoum.com/rss' in source_url:
         try:
             feed = feedparser.parse(source_url)
             for entry in feed.entries:
                 if entry.link not in posted_urls:
-                    if KEYWORD_FILTER and KEYWORD_FILTER not in entry.title:
-                        continue
-                    return entry.link
+                    urls.append(entry.link)
+                if len(urls) >= limit:
+                    break
         except Exception as e:
             print(f"Error reading RSS {source_url}: {e}")
             
@@ -119,63 +132,10 @@ def get_latest_article_from_source(source_url, posted_urls):
         links = extract_news_links_from_html(source_url)
         for link in links:
             if link not in posted_urls:
-                if not KEYWORD_FILTER:
-                    return link
-                return link 
-    return None
-
-def get_news_from_sources():
-    posted_urls = set()
-    if os.path.exists('posted_history.txt'):
-        with open('posted_history.txt', 'r', encoding='utf-8') as f:
-            posted_urls = set(line.strip() for line in f)
-
-    if SOURCE_URL:
-        print(f"Using manual Source URL: {SOURCE_URL}")
-        article_url = get_latest_article_from_source(SOURCE_URL, posted_urls)
-        if article_url:
-            return {"url": article_url}
-        else:
-            print("⚠️ No new articles found in the provided source URL.")
-            return None
-
-    print("Reading sources from sources.txt...")
-    if not os.path.exists('sources.txt'):
-        print("❌ sources.txt not found!")
-        return None
-
-    with open('sources.txt', 'r', encoding='utf-8') as f:
-        sources = [line.strip() for line in f if line.strip().startswith('http')]
-
-    if not sources:
-        print("❌ No valid links found in sources.txt!")
-        return None
-
-    pointer = 0
-    if os.path.exists('source_pointer.txt'):
-        with open('source_pointer.txt', 'r', encoding='utf-8') as f:
-            try:
-                pointer = int(f.read().strip())
-            except:
-                pointer = 0
-
-    total_sources = len(sources)
-    
-    for i in range(total_sources):
-        current_index = (pointer + i) % total_sources
-        source_url = sources[current_index]
-        
-        print(f"Checking source ({current_index + 1}/{total_sources}): {source_url}")
-        article_url = get_latest_article_from_source(source_url, posted_urls)
-
-        if article_url:
-            print(f"✅ Found new article from this source: {article_url}")
-            with open('source_pointer.txt', 'w', encoding='utf-8') as f:
-                f.write(str(current_index))
-            return {"url": article_url}
-
-    print("⚠️ No new news found in any source (all checked).")
-    return None
+                urls.append(link)
+            if len(urls) >= limit:
+                break
+    return urls
 
 def scrape_full_article(article_url, fallback_text=""):
     print(f"Scraping full article from: {article_url}")
@@ -194,8 +154,8 @@ def scrape_full_article(article_url, fallback_text=""):
         elif soup.title:
             title = soup.title.string
 
-        # هنا الفلتر بيشتغل بالكلمة اللي إنت كتبتها بإيدك
-        if KEYWORD_FILTER and KEYWORD_FILTER not in title:
+        # تطبيق الفلتر الذكي
+        if not keyword_matches(title, KEYWORD_FILTER):
             print(f"❌ Keyword '{KEYWORD_FILTER}' not found in title. Skipping this article.")
             return None, None, None
 
@@ -318,43 +278,101 @@ if __name__ == "__main__":
     else:
         token = get_access_token()
         if token:
-            article_url_to_save = None
-            title = ""
-            text_to_summarize = ""
-            image_url = ""
+            uploaded_successfully = False
 
+            # 1. لو المستخدم حط رابط خبر معين
             if NEWS_URL:
                 print("Using manual News Article URL provided by user.")
                 title, text_to_summarize, image_url = scrape_full_article(NEWS_URL, "خبر جديد")
-                if title:
-                    article_url_to_save = NEWS_URL
-            
+                if title and text_to_summarize:
+                    final_caption = summarize_with_groq(title, text_to_summarize)
+                    if not final_caption:
+                        clean_text = re.sub(r'\|.*', '', text_to_summarize).strip()
+                        final_caption = f"{clean_text[:800]}...\n\n#أخبار #تيك_توك"
+                    if CAPTION_PREFIX:
+                        final_caption = f"{CAPTION_PREFIX}\n\n{final_caption}"
+                    
+                    video_file = create_video_from_image(image_url)
+                    if upload_to_tiktok_direct(token, video_file, final_caption):
+                        save_to_history(NEWS_URL)
+                        uploaded_successfully = True
+                else:
+                    print("❌ Failed to scrape the provided news URL or keyword didn't match.")
+
+            # 2. لو النظام تلقائي أو المستخدم حط رابط قسم
             else:
                 print("Looking for the latest news from sources...")
-                news_data = get_news_from_sources()
-                if news_data:
-                    article_url_to_save = news_data['url']
-                    title, text_to_summarize, image_url = scrape_full_article(article_url_to_save, "")
-            
-            if article_url_to_save and text_to_summarize and title:
-                print(f"Title: {title}")
-                final_caption = summarize_with_groq(title, text_to_summarize)
-                
-                if not final_caption:
-                    print("⚠️ Groq failed. Using fallback.")
-                    clean_text = re.sub(r'\|.*', '', text_to_summarize).strip()
-                    final_caption = f"{clean_text[:800]}...\n\n#أخبار #تيك_توك"
-                
-                if CAPTION_PREFIX:
-                    final_caption = f"{CAPTION_PREFIX}\n\n{final_caption}"
-                
-                print(f"Generated Caption: \n{final_caption}\n")
-                
-                video_file = create_video_from_image(image_url)
-                
-                if upload_to_tiktok_direct(token, video_file, final_caption):
-                    save_to_history(article_url_to_save)
-            else:
-                print("Failed to get news data, no new news available, or keyword not found.")
+                posted_urls = set()
+                if os.path.exists('posted_history.txt'):
+                    with open('posted_history.txt', 'r', encoding='utf-8') as f:
+                        posted_urls = set(line.strip() for line in f)
+
+                sources_to_check = []
+                if SOURCE_URL:
+                    sources_to_check = [SOURCE_URL]
+                else:
+                    if os.path.exists('sources.txt'):
+                        with open('sources.txt', 'r', encoding='utf-8') as f:
+                            sources_to_check = [line.strip() for line in f if line.strip().startswith('http')]
+                    
+                    # الترتيب الدائري
+                    pointer = 0
+                    if os.path.exists('source_pointer.txt'):
+                        with open('source_pointer.txt', 'r', encoding='utf-8') as f:
+                            try:
+                                pointer = int(f.read().strip())
+                            except:
+                                pointer = 0
+                    
+                    if sources_to_check:
+                        sources_to_check = sources_to_check[pointer:] + sources_to_check[:pointer]
+
+                for source_url in sources_to_check:
+                    print(f"Checking source: {source_url}")
+                    
+                    # جلب مجموعة روابط (مثلاً 15 خبر) عشان لو الأول ملقاش الكلمة يروح للتاني
+                    candidate_urls = get_candidate_urls(source_url, posted_urls, limit=15)
+                    
+                    if not candidate_urls:
+                        print("⚠️ No new unposted articles found in this source.")
+                        continue
+                        
+                    # تدوير على الأخبار لحد ما نلاقي خبر فيه الكلمة المطلوبة
+                    for article_url in candidate_urls:
+                        title, text_to_summarize, image_url = scrape_full_article(article_url, "")
+                        
+                        if title and text_to_summarize:
+                            # لو لقينا خبر مطابق (أو مفيش فلتر كلمات)
+                            print(f"✅ Processing article: {title}")
+                            final_caption = summarize_with_groq(title, text_to_summarize)
+                            
+                            if not final_caption:
+                                print("⚠️ Groq failed. Using fallback.")
+                                clean_text = re.sub(r'\|.*', '', text_to_summarize).strip()
+                                final_caption = f"{clean_text[:800]}...\n\n#أخبار #تيك_توك"
+                            
+                            if CAPTION_PREFIX:
+                                final_caption = f"{CAPTION_PREFIX}\n\n{final_caption}"
+                            
+                            video_file = create_video_from_image(image_url)
+                            
+                            if upload_to_tiktok_direct(token, video_file, final_caption):
+                                save_to_history(article_url)
+                                uploaded_successfully = True
+                                
+                                # تحديث المؤشر لو إحنا في الوضع التلقائي
+                                if not SOURCE_URL:
+                                    with open('source_pointer.txt', 'w', encoding='utf-8') as f:
+                                        # نلاقي رقم المصدر الحالي ونحفظه
+                                        current_idx = sources_to_check.index(source_url)
+                                        f.write(str(current_idx))
+                                
+                                break # خروج من حلقة الأخبار لأننا نجحنا في النشر
+                    
+                    if uploaded_successfully:
+                        break # خروج من حلقة المصادر لأننا خلصنا المهمة
+
+            if not uploaded_successfully:
+                print("❌ Failed to find a suitable news article or upload failed.")
         else:
             print("Failed to get access token.")
