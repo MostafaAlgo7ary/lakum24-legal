@@ -14,8 +14,17 @@ https://m.youm7.com/Section/%D8%B9%D9%84%D9%88%D9%85-%D9%88-%D8%AA%D9%83%D9%86%D
 
 
 # المصري اليوم (Al-Masry Al-Youm)
-http://www.almasryalyoum.com/rss/rssfeeds?sectionId=3
-http://www.almasryalyoum.com/rss/RssFeeds?sectionId=7
+https://www.almasryalyoum.com/section/index/3
+https://www.almasryalyoum.com/section/index/2
+https://www.almasryalyoum.com/section/index/10
+https://www.almasryalyoum.com/section/index/4
+https://www.almasryalyoum.com/section/index/126
+https://www.almasryalyoum.com/section/index/78
+https://www.almasryalyoum.com/section/index/86
+https://www.almasryalyoum.com/section/index/9
+https://www.almasryalyoum.com/section/index/22
+https://www.almasryalyoum.com/services/gold
+https://www.almasryalyoum.com/services/currency
 
 # Football.london
 # (لا يوجد رابط RSS مباشر للأخبار حالياً، يمكن إضافته لاحقاً إذا توفر)
