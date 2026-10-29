@@ -2,5 +2,7 @@ requests
 feedparser
 beautifulsoup4
 moviepy==1.0.3
-Pillow
+Pillow==9.5.0
+arabic-reshaper
+python-bidi
 groq
