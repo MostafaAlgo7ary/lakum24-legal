@@ -2,7 +2,7 @@ import os
 import requests
 import feedparser
 from bs4 import BeautifulSoup
-from moviepy.editor import ImageClip
+from moviepy.editor import ImageClip, AudioFileClip
 from PIL import Image
 import io
 import numpy as np
@@ -76,7 +76,6 @@ def summarize_with_groq(title, text):
     return None
 
 def extract_news_links_from_html(url):
-    """استخراج روابط الأخبار من صفحات HTML (مثل اليوم السابع)"""
     print(f"Scraping links from HTML page: {url}")
     links = []
     try:
@@ -84,11 +83,9 @@ def extract_news_links_from_html(url):
         resp = requests.get(url, headers=headers, timeout=15)
         soup = BeautifulSoup(resp.text, 'html.parser')
         
-        # البحث عن جميع الروابط التي تحتوي على /story/ (وهو نمط روابط الأخبار في اليوم السابع)
         for a_tag in soup.find_all('a', href=True):
             href = a_tag['href']
             if '/story/' in href:
-                # تأكد من أن الرابط كامل
                 if href.startswith('http'):
                     links.append(href)
                 elif href.startswith('/'):
@@ -110,7 +107,6 @@ def get_news_from_sources():
         print("❌ No valid links found in sources.txt!")
         return None
 
-    # قراءة سجل الأخبار المنشورة
     posted_urls = set()
     if os.path.exists('posted_history.txt'):
         with open('posted_history.txt', 'r', encoding='utf-8') as f:
@@ -121,7 +117,6 @@ def get_news_from_sources():
 
     for source_url in sources:
         if 'almasryalyoum.com/rss' in source_url:
-            # التعامل مع روابط RSS (المصري اليوم)
             print(f"Checking RSS source: {source_url}")
             try:
                 feed = feedparser.parse(source_url)
@@ -130,7 +125,6 @@ def get_news_from_sources():
             except Exception as e:
                 print(f"Error reading RSS {source_url}: {e}")
         elif 'youm7.com/Section' in source_url:
-            # التعامل مع صفحات الويب (اليوم السابع)
             links = extract_news_links_from_html(source_url)
             all_article_links.extend(links)
 
@@ -138,11 +132,9 @@ def get_news_from_sources():
         print("⚠️ No article links found from any source.")
         return None
 
-    # إزالة التكرار من روابط الأخبار
     all_article_links = list(set(all_article_links))
     random.shuffle(all_article_links)
 
-    # اختيار أول خبر مش متسجل
     for article_url in all_article_links:
         if article_url not in posted_urls:
             print(f"✅ Found new article: {article_url}")
@@ -162,7 +154,6 @@ def scrape_full_article(article_url, fallback_text=""):
         resp = requests.get(article_url, headers=headers, timeout=15)
         soup = BeautifulSoup(resp.text, 'html.parser')
 
-        # استخراج العنوان
         og_title = soup.find('meta', property='og:title')
         if og_title and og_title.get('content'):
             title = og_title['content']
@@ -203,26 +194,37 @@ def create_video_from_image(image_url, output_path="output_video.mp4"):
     img_resp = requests.get(image_url, timeout=15)
     img = Image.open(io.BytesIO(img_resp.content)).convert("RGB")
     img = img.resize((1080, 1920))
-    print("Creating 5-second video...")
+    
+    print("Creating 5-second video with zoom effect and audio...")
+    # إنشاء الفيديو وإضافة تأثير الزووم (Ken Burns effect)
     clip = ImageClip(np.array(img)).set_duration(5)
-    clip.write_videofile(output_path, fps=24, codec='libx264', audio=False)
+    # تأثير الزووم التدريجي (من 100% إلى 110%)
+    clip = clip.resize(lambda t: 1 + 0.05 * t)
+    
+    # تحميل صوت خلفية (موسيقى مجانية) وإضافته
+    try:
+        audio_url = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
+        audio_resp = requests.get(audio_url, timeout=15)
+        with open("bg_music.mp3", "wb") as f:
+            f.write(audio_resp.content)
+        audioclip = AudioFileClip("bg_music.mp3").subclip(0, 5)
+        clip = clip.set_audio(audioclip)
+    except Exception as e:
+        print(f"⚠️ Could not add audio (continuing without it): {e}")
+
+    clip.write_videofile(output_path, fps=24, codec='libx264', audio_codec='aac')
     return output_path
 
-def upload_to_tiktok(access_token, video_path, caption):
-    init_url = "https://open.tiktokapis.com/v2/post/publish/video/init/"
+def upload_to_inbox(access_token, video_path):
+    print("Uploading video to TikTok Inbox (Drafts)...")
+    init_url = "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/"
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json; charset=UTF-8"
     }
     video_size = os.path.getsize(video_path)
+    
     payload = {
-        "post_info": {
-            "title": caption[:2200], 
-            "privacy_level": "SELF_ONLY", 
-            "disable_duet": False,
-            "disable_comment": False,
-            "disable_stitch": False
-        },
         "source_info": {
             "source": "FILE_UPLOAD",
             "video_size": video_size,
@@ -250,7 +252,7 @@ def upload_to_tiktok(access_token, video_path, caption):
     
     upload_resp = requests.put(upload_url, data=video_data, headers=upload_headers)
     if upload_resp.status_code in [200, 201, 206]:
-        print(f"Video uploaded successfully! Publish ID: {publish_id}")
+        print(f"✅ Video uploaded successfully to Inbox! Publish ID: {publish_id}")
         return True
     else:
         print("Upload Error:", upload_resp.text)
@@ -294,11 +296,17 @@ if __name__ == "__main__":
                     clean_text = re.sub(r'\|.*', '', text_to_summarize).strip()
                     final_caption = f"{clean_text[:800]}...\n\n#أخبار #تيك_توك"
                 
-                print(f"Final Caption: \n{final_caption}")
+                # طباعة الكابشن بشكل واضح جداً في اللوجز عشان تنسخه بسهولة
+                print("\n" + "="*50)
+                print("📝 COPY THIS CAPTION FOR YOUR DRAFT:")
+                print("="*50)
+                print(final_caption)
+                print("="*50 + "\n")
                 
                 video_file = create_video_from_image(image_url)
                 
-                if upload_to_tiktok(token, video_file, final_caption):
+                # استخدام الـ Inbox بدل النشر المباشر
+                if upload_to_inbox(token, video_file):
                     save_to_history(article_url_to_save)
             else:
                 print("Failed to get news data or no new news available.")
