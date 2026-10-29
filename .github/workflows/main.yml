@@ -6,13 +6,54 @@ on:
   workflow_dispatch:
     inputs:
       news_url:
-        description: 'رابط خبر محدد (اختياري - ينشر الخبر ده فوراً)'
+        description: 'رابط خبر محدد (اختياري - اتركه فارغاً إذا كنت تستخدم مصدر)'
         required: false
         default: ''
       source_url:
-        description: 'رابط مصدر/قسم (اختياري - يختار أحدث خبر فيه)'
+        description: 'رابط مصدر/قسم (اختياري - اتركه فارغاً إذا كنت تستخدم خبر محدد)'
         required: false
         default: ''
+      privacy_level:
+        description: 'مستوى الخصوصية'
+        required: true
+        default: 'SELF_ONLY'
+        type: choice
+        options:
+          - SELF_ONLY
+          - MUTUAL_FOLLOW_FRIENDS
+          - PUBLIC_TO_EVERYONE
+      keyword:
+        description: 'فلتر بكلمة مفتاحية (يبحث عنها في عنوان الخبر)'
+        required: true
+        default: 'none'
+        type: choice
+        options:
+          - none
+          - الذهب
+          - الدولار
+          - السيسي
+          - غزة
+          - أسعار
+          - الكرة
+      enable_audio:
+        description: 'إضافة موسيقى خلفية؟'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      caption_prefix:
+        description: 'جملة تظهر أول الكابشن'
+        required: true
+        default: 'none'
+        type: choice
+        options:
+          - none
+          - 'عاجل: '
+          - 'خبر اليوم: '
+          - 'تطورات جديدة: '
+          - 'عاجل جداً: '
 
 permissions:
   contents: write
@@ -40,6 +81,10 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           NEWS_URL: ${{ github.event.inputs.news_url }}
           SOURCE_URL: ${{ github.event.inputs.source_url }}
+          PRIVACY_LEVEL: ${{ github.event.inputs.privacy_level }}
+          KEYWORD_FILTER: ${{ github.event.inputs.keyword }}
+          ENABLE_AUDIO: ${{ github.event.inputs.enable_audio }}
+          CAPTION_PREFIX: ${{ github.event.inputs.caption_prefix }}
         run: python bot.py
 
       - name: Commit and push history and pointer
