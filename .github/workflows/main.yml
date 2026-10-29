@@ -2,11 +2,15 @@ name: TikTok News Bot
 
 on:
   schedule:
-    - cron: '0 */12 * * *' # يشتغل مرتين يومياً (كل 12 ساعة)
+    - cron: '0 */12 * * *' # يشتغل مرتين يومياً
   workflow_dispatch:
     inputs:
       news_url:
-        description: 'رابط الخبر (اختياري)'
+        description: 'رابط خبر محدد (اختياري - ينشر الخبر ده فوراً)'
+        required: false
+        default: ''
+      source_url:
+        description: 'رابط مصدر/قسم (اختياري - يختار أحدث خبر فيه)'
         required: false
         default: ''
 
@@ -35,12 +39,13 @@ jobs:
           TIKTOK_REFRESH_TOKEN: ${{ secrets.TIKTOK_REFRESH_TOKEN }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           NEWS_URL: ${{ github.event.inputs.news_url }}
+          SOURCE_URL: ${{ github.event.inputs.source_url }}
         run: python bot.py
 
-      - name: Commit and push history
+      - name: Commit and push history and pointer
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add posted_history.txt
-          git commit -m "Update posted news history" || echo "No changes to commit"
+          git add posted_history.txt source_pointer.txt
+          git commit -m "Update history and pointer" || echo "No changes to commit"
           git push
