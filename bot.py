@@ -16,6 +16,7 @@ CLIENT_SECRET = os.environ.get('TIKTOK_CLIENT_SECRET')
 REFRESH_TOKEN = os.environ.get('TIKTOK_REFRESH_TOKEN')
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
 NEWS_URL = os.environ.get('NEWS_URL', '').strip()
+SOURCE_URL = os.environ.get('SOURCE_URL', '').strip()
 
 groq_client = Groq(api_key=GROQ_API_KEY)
 
@@ -94,7 +95,41 @@ def extract_news_links_from_html(url):
         print(f"Error extracting links from {url}: {e}")
     return links
 
+def get_latest_article_from_source(source_url, posted_urls):
+    """دالة مساعدة تجيب أحدث خبر من مصدر معين"""
+    if 'almasryalyoum.com/rss' in source_url:
+        try:
+            feed = feedparser.parse(source_url)
+            for entry in feed.entries:
+                if entry.link not in posted_urls:
+                    return entry.link
+        except Exception as e:
+            print(f"Error reading RSS {source_url}: {e}")
+            
+    elif 'youm7.com/Section' in source_url:
+        links = extract_news_links_from_html(source_url)
+        for link in links:
+            if link not in posted_urls:
+                return link
+    return None
+
 def get_news_from_sources():
+    posted_urls = set()
+    if os.path.exists('posted_history.txt'):
+        with open('posted_history.txt', 'r', encoding='utf-8') as f:
+            posted_urls = set(line.strip() for line in f)
+
+    # 1. لو المستخدم حط رابط مصدر يدوياً
+    if SOURCE_URL:
+        print(f"Using manual Source URL: {SOURCE_URL}")
+        article_url = get_latest_article_from_source(SOURCE_URL, posted_urls)
+        if article_url:
+            return {"url": article_url}
+        else:
+            print("⚠️ No new articles found in the provided source URL.")
+            return None
+
+    # 2. لو مفيش مدخلات، نقرأ من ملف sources.txt (النظام الدائري)
     print("Reading sources from sources.txt...")
     if not os.path.exists('sources.txt'):
         print("❌ sources.txt not found!")
@@ -107,11 +142,6 @@ def get_news_from_sources():
         print("❌ No valid links found in sources.txt!")
         return None
 
-    posted_urls = set()
-    if os.path.exists('posted_history.txt'):
-        with open('posted_history.txt', 'r', encoding='utf-8') as f:
-            posted_urls = set(line.strip() for line in f)
-
     pointer = 0
     if os.path.exists('source_pointer.txt'):
         with open('source_pointer.txt', 'r', encoding='utf-8') as f:
@@ -122,34 +152,15 @@ def get_news_from_sources():
 
     total_sources = len(sources)
     
-    # نلف على كل المصادر بداية من المؤشر
     for i in range(total_sources):
         current_index = (pointer + i) % total_sources
         source_url = sources[current_index]
         
         print(f"Checking source ({current_index + 1}/{total_sources}): {source_url}")
-        article_url = None
-        
-        if 'almasryalyoum.com/rss' in source_url:
-            try:
-                feed = feedparser.parse(source_url)
-                for entry in feed.entries:
-                    if entry.link not in posted_urls:
-                        article_url = entry.link
-                        break
-            except Exception as e:
-                print(f"Error reading RSS {source_url}: {e}")
-                
-        elif 'youm7.com/Section' in source_url:
-            links = extract_news_links_from_html(source_url)
-            for link in links:
-                if link not in posted_urls:
-                    article_url = link
-                    break
+        article_url = get_latest_article_from_source(source_url, posted_urls)
 
         if article_url:
             print(f"✅ Found new article from this source: {article_url}")
-            # حفظ مؤشر المصدر الجديد
             with open('source_pointer.txt', 'w', encoding='utf-8') as f:
                 f.write(str(current_index))
             return {"url": article_url}
@@ -294,12 +305,15 @@ if __name__ == "__main__":
             text_to_summarize = ""
             image_url = ""
 
+            # الأولوية القصوى: لو في رابط خبر محدد
             if NEWS_URL:
-                print("Using manual URL provided by user.")
+                print("Using manual News Article URL provided by user.")
                 title, text_to_summarize, image_url = scrape_full_article(NEWS_URL, "خبر جديد")
                 article_url_to_save = NEWS_URL
+            
+            # الأولوية التانية: لو في رابط مصدر محدد أو النظام التلقائي
             else:
-                print("Auto-fetching from sources.txt...")
+                print("Looking for the latest news from sources...")
                 news_data = get_news_from_sources()
                 if news_data:
                     article_url_to_save = news_data['url']
