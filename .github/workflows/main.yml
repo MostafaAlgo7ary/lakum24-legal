@@ -23,18 +23,9 @@ on:
           - MUTUAL_FOLLOW_FRIENDS
           - PUBLIC_TO_EVERYONE
       keyword:
-        description: 'فلتر بكلمة مفتاحية (يبحث عنها في عنوان الخبر)'
-        required: true
-        default: 'none'
-        type: choice
-        options:
-          - none
-          - الذهب
-          - الدولار
-          - السيسي
-          - غزة
-          - أسعار
-          - الكرة
+        description: 'فلتر بكلمة مفتاحية (اكتب الكلمة هنا، أو اتركها فارغة لعدم الفلترة)'
+        required: false
+        default: ''
       enable_audio:
         description: 'إضافة موسيقى خلفية؟'
         required: true
