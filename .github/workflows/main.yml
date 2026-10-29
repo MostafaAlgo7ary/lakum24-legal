@@ -2,7 +2,7 @@ name: TikTok News Bot
 
 on:
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: '0 */12 * * *' # يشتغل مرتين يومياً (كل 12 ساعة)
   workflow_dispatch:
     inputs:
       news_url:
