@@ -112,34 +112,26 @@ def get_news_from_sources():
         with open('posted_history.txt', 'r', encoding='utf-8') as f:
             posted_urls = set(line.strip() for line in f)
 
-    random.shuffle(sources)
-    all_article_links = []
-
+    # إزالة العشوائية عشان ناخد أول مصدر وأحدث أخباره
     for source_url in sources:
         if 'almasryalyoum.com/rss' in source_url:
             print(f"Checking RSS source: {source_url}")
             try:
                 feed = feedparser.parse(source_url)
+                # feedparser بيرتب الأخبار من الأحدث للأقدم تلقائياً
                 for entry in feed.entries:
-                    all_article_links.append(entry.link)
+                    if entry.link not in posted_urls:
+                        print(f"✅ Found new article: {entry.link}")
+                        return {"url": entry.link}
             except Exception as e:
                 print(f"Error reading RSS {source_url}: {e}")
         elif 'youm7.com/Section' in source_url:
             links = extract_news_links_from_html(source_url)
-            all_article_links.extend(links)
+            for link in links:
+                if link not in posted_urls:
+                    print(f"✅ Found new article: {link}")
+                    return {"url": link}
 
-    if not all_article_links:
-        print("⚠️ No article links found from any source.")
-        return None
-
-    all_article_links = list(set(all_article_links))
-    random.shuffle(all_article_links)
-
-    for article_url in all_article_links:
-        if article_url not in posted_urls:
-            print(f"✅ Found new article: {article_url}")
-            return {"url": article_url}
-            
     print("⚠️ No new news found in any source.")
     return None
 
@@ -196,12 +188,9 @@ def create_video_from_image(image_url, output_path="output_video.mp4"):
     img = img.resize((1080, 1920))
     
     print("Creating 5-second video with zoom effect and audio...")
-    # إنشاء الفيديو وإضافة تأثير الزووم (Ken Burns effect)
     clip = ImageClip(np.array(img)).set_duration(5)
-    # تأثير الزووم التدريجي (من 100% إلى 110%)
     clip = clip.resize(lambda t: 1 + 0.05 * t)
     
-    # تحميل صوت خلفية (موسيقى مجانية) وإضافته
     try:
         audio_url = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
         audio_resp = requests.get(audio_url, timeout=15)
@@ -215,9 +204,9 @@ def create_video_from_image(image_url, output_path="output_video.mp4"):
     clip.write_videofile(output_path, fps=24, codec='libx264', audio_codec='aac')
     return output_path
 
-def upload_to_inbox(access_token, video_path):
-    print("Uploading video to TikTok Inbox (Drafts)...")
-    init_url = "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/"
+def upload_to_tiktok_direct(access_token, video_path, caption):
+    print("Uploading video via Direct Post (with Caption)...")
+    init_url = "https://open.tiktokapis.com/v2/post/publish/video/init/"
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json; charset=UTF-8"
@@ -225,6 +214,13 @@ def upload_to_inbox(access_token, video_path):
     video_size = os.path.getsize(video_path)
     
     payload = {
+        "post_info": {
+            "title": caption[:2200], 
+            "privacy_level": "SELF_ONLY", # هيشتغل خاص لحد ما يتم قبول التطبيق
+            "disable_duet": False,
+            "disable_comment": False,
+            "disable_stitch": False
+        },
         "source_info": {
             "source": "FILE_UPLOAD",
             "video_size": video_size,
@@ -252,7 +248,7 @@ def upload_to_inbox(access_token, video_path):
     
     upload_resp = requests.put(upload_url, data=video_data, headers=upload_headers)
     if upload_resp.status_code in [200, 201, 206]:
-        print(f"✅ Video uploaded successfully to Inbox! Publish ID: {publish_id}")
+        print(f"✅ Video uploaded successfully! Publish ID: {publish_id}")
         return True
     else:
         print("Upload Error:", upload_resp.text)
@@ -296,17 +292,12 @@ if __name__ == "__main__":
                     clean_text = re.sub(r'\|.*', '', text_to_summarize).strip()
                     final_caption = f"{clean_text[:800]}...\n\n#أخبار #تيك_توك"
                 
-                # طباعة الكابشن بشكل واضح جداً في اللوجز عشان تنسخه بسهولة
-                print("\n" + "="*50)
-                print("📝 COPY THIS CAPTION FOR YOUR DRAFT:")
-                print("="*50)
-                print(final_caption)
-                print("="*50 + "\n")
+                print(f"Generated Caption: \n{final_caption}\n")
                 
                 video_file = create_video_from_image(image_url)
                 
-                # استخدام الـ Inbox بدل النشر المباشر
-                if upload_to_inbox(token, video_file):
+                # استخدام النشر المباشر عشان الكابشن ينزل مع الفيديو
+                if upload_to_tiktok_direct(token, video_file, final_caption):
                     save_to_history(article_url_to_save)
             else:
                 print("Failed to get news data or no new news available.")
