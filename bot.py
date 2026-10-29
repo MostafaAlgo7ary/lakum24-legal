@@ -7,6 +7,7 @@ from PIL import Image
 import io
 import numpy as np
 import re
+import sys
 from groq import Groq
 
 # --- الإعدادات الأساسية ---
@@ -50,8 +51,8 @@ def summarize_with_groq(title, text):
     if not truncated_text:
         truncated_text = title
 
+    # شيلنا الموديل اللي كان بيضرب 404
     models_to_try = [
-        "llama-3.3-70b-versatile",
         "openai/gpt-oss-120b",
         "qwen/qwen3-32b",
         "meta-llama/llama-4-maverick-17b-128e-instruct"
@@ -104,18 +105,15 @@ def extract_news_links_from_html(url):
     return links
 
 def keyword_matches(title, keyword):
-    """دالة ذكية للتحقق من وجود الكلمة المفتاحية"""
     if not keyword:
         return True
     if keyword in title:
         return True
-    # لو إنت كتبت الكلمة بـ "ال"، الكود هيشيلها ويدور على أصل الكلمة
     if keyword.startswith('ال') and keyword[2:] in title:
         return True
     return False
 
 def get_candidate_urls(source_url, posted_urls, limit=15):
-    """جلب مجموعة روابط أخبار حديثة للتجربة"""
     urls = []
     if 'almasryalyoum.com/rss' in source_url:
         try:
@@ -154,7 +152,6 @@ def scrape_full_article(article_url, fallback_text=""):
         elif soup.title:
             title = soup.title.string
 
-        # تطبيق الفلتر الذكي
         if not keyword_matches(title, KEYWORD_FILTER):
             print(f"❌ Keyword '{KEYWORD_FILTER}' not found in title. Skipping this article.")
             return None, None, None
@@ -243,6 +240,9 @@ def upload_to_tiktok_direct(access_token, video_path, caption):
     init_resp = requests.post(init_url, json=payload, headers=headers)
     if init_resp.status_code != 200:
         print("Init Error:", init_resp.text)
+        # لو الخطأ سبام، نرجع كلمة SPAM عشان نوقف الكود
+        if "spam_risk_too_many_posts" in init_resp.text:
+            return "SPAM"
         return False
         
     upload_url = init_resp.json()['data']['upload_url']
@@ -275,12 +275,12 @@ if __name__ == "__main__":
     
     if not CLIENT_KEY or not CLIENT_SECRET or not REFRESH_TOKEN or not GROQ_API_KEY:
         print("❌ Error: One or more secrets are missing in GitHub!")
+        sys.exit(1)
     else:
         token = get_access_token()
         if token:
             uploaded_successfully = False
 
-            # 1. لو المستخدم حط رابط خبر معين
             if NEWS_URL:
                 print("Using manual News Article URL provided by user.")
                 title, text_to_summarize, image_url = scrape_full_article(NEWS_URL, "خبر جديد")
@@ -293,13 +293,17 @@ if __name__ == "__main__":
                         final_caption = f"{CAPTION_PREFIX}\n\n{final_caption}"
                     
                     video_file = create_video_from_image(image_url)
-                    if upload_to_tiktok_direct(token, video_file, final_caption):
+                    upload_result = upload_to_tiktok_direct(token, video_file, final_caption)
+                    
+                    if upload_result == True:
                         save_to_history(NEWS_URL)
                         uploaded_successfully = True
+                    elif upload_result == "SPAM":
+                        print("🛑 TikTok SPAM block detected. Exiting immediately to save resources.")
+                        sys.exit(0) # إيقاف السكربت فوراً
                 else:
                     print("❌ Failed to scrape the provided news URL or keyword didn't match.")
 
-            # 2. لو النظام تلقائي أو المستخدم حط رابط قسم
             else:
                 print("Looking for the latest news from sources...")
                 posted_urls = set()
@@ -315,7 +319,6 @@ if __name__ == "__main__":
                         with open('sources.txt', 'r', encoding='utf-8') as f:
                             sources_to_check = [line.strip() for line in f if line.strip().startswith('http')]
                     
-                    # الترتيب الدائري
                     pointer = 0
                     if os.path.exists('source_pointer.txt'):
                         with open('source_pointer.txt', 'r', encoding='utf-8') as f:
@@ -330,19 +333,16 @@ if __name__ == "__main__":
                 for source_url in sources_to_check:
                     print(f"Checking source: {source_url}")
                     
-                    # جلب مجموعة روابط (مثلاً 15 خبر) عشان لو الأول ملقاش الكلمة يروح للتاني
                     candidate_urls = get_candidate_urls(source_url, posted_urls, limit=15)
                     
                     if not candidate_urls:
                         print("⚠️ No new unposted articles found in this source.")
                         continue
                         
-                    # تدوير على الأخبار لحد ما نلاقي خبر فيه الكلمة المطلوبة
                     for article_url in candidate_urls:
                         title, text_to_summarize, image_url = scrape_full_article(article_url, "")
                         
                         if title and text_to_summarize:
-                            # لو لقينا خبر مطابق (أو مفيش فلتر كلمات)
                             print(f"✅ Processing article: {title}")
                             final_caption = summarize_with_groq(title, text_to_summarize)
                             
@@ -356,21 +356,24 @@ if __name__ == "__main__":
                             
                             video_file = create_video_from_image(image_url)
                             
-                            if upload_to_tiktok_direct(token, video_file, final_caption):
+                            upload_result = upload_to_tiktok_direct(token, video_file, final_caption)
+                            
+                            if upload_result == True:
                                 save_to_history(article_url)
                                 uploaded_successfully = True
                                 
-                                # تحديث المؤشر لو إحنا في الوضع التلقائي
                                 if not SOURCE_URL:
                                     with open('source_pointer.txt', 'w', encoding='utf-8') as f:
-                                        # نلاقي رقم المصدر الحالي ونحفظه
                                         current_idx = sources_to_check.index(source_url)
                                         f.write(str(current_idx))
                                 
-                                break # خروج من حلقة الأخبار لأننا نجحنا في النشر
+                                break # خروج من حلقة الأخبار
+                            elif upload_result == "SPAM":
+                                print("🛑 TikTok SPAM block detected. Exiting immediately to save resources.")
+                                sys.exit(0) # إيقاف السكربت فوراً عشان ميكررش المحاولات
                     
                     if uploaded_successfully:
-                        break # خروج من حلقة المصادر لأننا خلصنا المهمة
+                        break
 
             if not uploaded_successfully:
                 print("❌ Failed to find a suitable news article or upload failed.")
