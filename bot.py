@@ -112,27 +112,49 @@ def get_news_from_sources():
         with open('posted_history.txt', 'r', encoding='utf-8') as f:
             posted_urls = set(line.strip() for line in f)
 
-    # إزالة العشوائية عشان ناخد أول مصدر وأحدث أخباره
-    for source_url in sources:
+    pointer = 0
+    if os.path.exists('source_pointer.txt'):
+        with open('source_pointer.txt', 'r', encoding='utf-8') as f:
+            try:
+                pointer = int(f.read().strip())
+            except:
+                pointer = 0
+
+    total_sources = len(sources)
+    
+    # نلف على كل المصادر بداية من المؤشر
+    for i in range(total_sources):
+        current_index = (pointer + i) % total_sources
+        source_url = sources[current_index]
+        
+        print(f"Checking source ({current_index + 1}/{total_sources}): {source_url}")
+        article_url = None
+        
         if 'almasryalyoum.com/rss' in source_url:
-            print(f"Checking RSS source: {source_url}")
             try:
                 feed = feedparser.parse(source_url)
-                # feedparser بيرتب الأخبار من الأحدث للأقدم تلقائياً
                 for entry in feed.entries:
                     if entry.link not in posted_urls:
-                        print(f"✅ Found new article: {entry.link}")
-                        return {"url": entry.link}
+                        article_url = entry.link
+                        break
             except Exception as e:
                 print(f"Error reading RSS {source_url}: {e}")
+                
         elif 'youm7.com/Section' in source_url:
             links = extract_news_links_from_html(source_url)
             for link in links:
                 if link not in posted_urls:
-                    print(f"✅ Found new article: {link}")
-                    return {"url": link}
+                    article_url = link
+                    break
 
-    print("⚠️ No new news found in any source.")
+        if article_url:
+            print(f"✅ Found new article from this source: {article_url}")
+            # حفظ مؤشر المصدر الجديد
+            with open('source_pointer.txt', 'w', encoding='utf-8') as f:
+                f.write(str(current_index))
+            return {"url": article_url}
+
+    print("⚠️ No new news found in any source (all checked).")
     return None
 
 def scrape_full_article(article_url, fallback_text=""):
@@ -216,7 +238,7 @@ def upload_to_tiktok_direct(access_token, video_path, caption):
     payload = {
         "post_info": {
             "title": caption[:2200], 
-            "privacy_level": "SELF_ONLY", # هيشتغل خاص لحد ما يتم قبول التطبيق
+            "privacy_level": "SELF_ONLY", 
             "disable_duet": False,
             "disable_comment": False,
             "disable_stitch": False
@@ -296,7 +318,6 @@ if __name__ == "__main__":
                 
                 video_file = create_video_from_image(image_url)
                 
-                # استخدام النشر المباشر عشان الكابشن ينزل مع الفيديو
                 if upload_to_tiktok_direct(token, video_file, final_caption):
                     save_to_history(article_url_to_save)
             else:
