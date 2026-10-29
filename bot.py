@@ -19,17 +19,12 @@ GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
 NEWS_URL = os.environ.get('NEWS_URL', '').strip()
 SOURCE_URL = os.environ.get('SOURCE_URL', '').strip()
 PRIVACY_LEVEL = os.environ.get('PRIVACY_LEVEL', 'SELF_ONLY').strip()
-
-# معالجة اختيار "none" من القوائم المنسدلة
 KEYWORD_FILTER = os.environ.get('KEYWORD_FILTER', '').strip()
-if KEYWORD_FILTER.lower() == 'none':
-    KEYWORD_FILTER = ''
+ENABLE_AUDIO = os.environ.get('ENABLE_AUDIO', 'true').strip().lower() == 'true'
 
 CAPTION_PREFIX = os.environ.get('CAPTION_PREFIX', '').strip()
 if CAPTION_PREFIX.lower() == 'none':
     CAPTION_PREFIX = ''
-
-ENABLE_AUDIO = os.environ.get('ENABLE_AUDIO', 'true').strip().lower() == 'true'
 
 groq_client = Groq(api_key=GROQ_API_KEY)
 
@@ -199,6 +194,7 @@ def scrape_full_article(article_url, fallback_text=""):
         elif soup.title:
             title = soup.title.string
 
+        # هنا الفلتر بيشتغل بالكلمة اللي إنت كتبتها بإيدك
         if KEYWORD_FILTER and KEYWORD_FILTER not in title:
             print(f"❌ Keyword '{KEYWORD_FILTER}' not found in title. Skipping this article.")
             return None, None, None
