@@ -1,11 +1,13 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="ar" dir="ltr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lakum24 Bot | Automated News Bot</title>
-    <!-- ربط الأيقونة عشان تطابق تيك توك -->
-<img src="./icon.png" alt="Lakum24 Bot Logo">
+    
+    <!-- ربط الأيقونة (Favicon) اللي في تبويب المتصفح -->
+    <link rel="icon" type="image/png" href="./icon.png">
+    
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -28,13 +30,16 @@
             align-items: center;
             gap: 15px;
         }
+        /* تنسيق الشعار اللي في رأس الصفحة */
         .logo-container img {
-            width: 50px;
-            height: 50px;
+            width: 60px;
+            height: 60px;
             border-radius: 10px;
+            object-fit: contain;
+            background-color: #000; /* خلفية سوداء لو الصورة شفافة */
         }
         .logo-container h1 {
-            font-size: 24px;
+            font-size: 28px;
             margin: 0;
             color: #ff0050;
         }
@@ -48,6 +53,9 @@
         }
         h2 {
             color: #25f4ee;
+            border-bottom: 1px solid #333;
+            padding-bottom: 10px;
+            margin-top: 30px;
         }
         p {
             font-size: 16px;
@@ -65,20 +73,32 @@
             border-radius: 8px;
             border-right: 4px solid #25f4ee;
         }
+        .feature-box h3 {
+            margin-top: 0;
+            color: #ffffff;
+        }
         footer {
             text-align: center;
             padding: 20px;
             margin-top: 40px;
             border-top: 1px solid #333;
+            background-color: #1a1a1a;
         }
         footer a {
             color: #ff0050;
             text-decoration: none;
-            margin: 0 10px;
+            margin: 0 15px;
             font-weight: bold;
+            font-size: 16px;
         }
         footer a:hover {
             text-decoration: underline;
+            color: #25f4ee;
+        }
+        @media (max-width: 600px) {
+            .features {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
@@ -86,8 +106,8 @@
 
     <header>
         <div class="logo-container">
-            <!-- نفس الأيقونة اللي هترفعها في تيك توك -->
-            <img src="icon.png" alt="Lakum24 Bot Logo">
+            <!-- نفس الصورة اللي في المستودع -->
+            <img src="./icon.png" alt="Lakum24 Bot Logo">
             <h1>Lakum24 Bot</h1>
         </div>
     </header>
@@ -117,7 +137,7 @@
         </div>
 
         <h2>About the Developer</h2>
-        <p>This application is a personal project developed to automate news delivery and provide fast, accessible updates to followers. No personal data is collected from viewers.</p>
+        <p>This application is a personal project developed to automate news delivery and provide fast, accessible updates to followers. No personal data is collected from viewers. The app uses the TikTok Login Kit to securely authorize the account and post content.</p>
     </div>
 
     <footer>
