@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="ar" dir="ltr">
+<html lang="en" dir="ltr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lakum24 Bot | Automated News Bot</title>
     
-    <!-- ربط الأيقونة (Favicon) اللي في تبويب المتصفح -->
-    <link rel="icon" type="image/png" href="./icon.png">
+    <!-- ربط الأيقونة (Favicon) بدون أي مسارات معقدة -->
+    <link rel="icon" type="image/png" href="icon.png">
     
     <style>
         body {
@@ -22,7 +22,7 @@
             padding: 20px;
             display: flex;
             align-items: center;
-            justify-content: space-between;
+            justify-content: flex-start;
             border-bottom: 2px solid #ff0050;
         }
         .logo-container {
@@ -30,14 +30,17 @@
             align-items: center;
             gap: 15px;
         }
-        /* تنسيق الشعار اللي في رأس الصفحة */
+        
+        /* تنسيق الشعار */
         .logo-container img {
             width: 60px;
             height: 60px;
-            border-radius: 10px;
+            border-radius: 8px;
             object-fit: contain;
-            background-color: #000; /* خلفية سوداء لو الصورة شفافة */
+            background-color: #000;
+            border: 1px solid #333;
         }
+        
         .logo-container h1 {
             font-size: 28px;
             margin: 0;
@@ -71,7 +74,7 @@
             background-color: #2a2a2a;
             padding: 15px;
             border-radius: 8px;
-            border-right: 4px solid #25f4ee;
+            border-left: 4px solid #25f4ee;
         }
         .feature-box h3 {
             margin-top: 0;
@@ -106,8 +109,8 @@
 
     <header>
         <div class="logo-container">
-            <!-- نفس الصورة اللي في المستودع -->
-            <img src="./icon.png" alt="Lakum24 Bot Logo">
+            <!-- اسم الصورة بالظبط زي ما هي في المستودع -->
+            <img src="icon.png" alt="Lakum24 Bot Logo">
             <h1>Lakum24 Bot</h1>
         </div>
     </header>
